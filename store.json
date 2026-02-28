@@ -47,8 +47,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 1,
+      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.467410591Z",
-      "updated_at": "2026-02-28T21:44:14.467410591Z"
+      "updated_at": "2026-02-28T21:48:59.964083281Z"
     },
     "lb-kpm6": {
       "id": "lb-kpm6",
