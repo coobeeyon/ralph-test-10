@@ -654,6 +654,98 @@ mod tests {
     }
 
     #[test]
+    fn bullet_does_not_hit_own_ship() {
+        let mut m = Match::new(1000);
+
+        // Place ship 0 with zero velocity, fire a bullet
+        m.ships[0].pos = Vec2::new(500.0, 500.0);
+        m.ships[0].rotation = 0.0;
+
+        let fire = ShipActions {
+            fire: true,
+            ..Default::default()
+        };
+
+        // Fire and step many times — bullet should never hit its own ship
+        m.step([fire, no_action()], DT);
+        for _ in 0..40 {
+            m.step([no_action(), no_action()], DT);
+        }
+
+        assert!(m.ships[0].alive);
+    }
+
+    #[test]
+    fn bullet_collision_across_toroidal_boundary() {
+        let mut m = Match::new(1000);
+
+        // Place ship 0 near right edge, firing right
+        m.ships[0].pos = Vec2::new(980.0, 500.0);
+        m.ships[0].rotation = 0.0; // facing right
+
+        // Place ship 1 near left edge — close via wrapping
+        m.ships[1].pos = Vec2::new(10.0, 500.0);
+
+        let fire = ShipActions {
+            fire: true,
+            ..Default::default()
+        };
+
+        // Fire and step until bullet wraps around and hits ship 1
+        m.step([fire, no_action()], DT);
+        for _ in 0..10 {
+            m.step([no_action(), no_action()], DT);
+        }
+
+        // Bullet should have wrapped and hit ship 1 (they're ~30px apart toroidally)
+        assert!(!m.ships[1].alive);
+        assert!(m.ships[0].alive);
+    }
+
+    #[test]
+    fn bullet_inherits_ship_velocity() {
+        let mut m = Match::new(1000);
+
+        // Give ship 0 some velocity, then fire
+        m.ships[0].vel = Vec2::new(0.0, 100.0); // moving down
+        m.ships[0].rotation = 0.0; // facing right
+
+        let fire = ShipActions {
+            fire: true,
+            ..Default::default()
+        };
+        m.step([fire, no_action()], DT);
+
+        // Bullet should have both rightward (from facing) and downward (from ship vel) components
+        assert!(m.bullets[0].vel.x > 0.0); // from facing direction + BULLET_SPEED
+        // Y velocity inherited from ship (slightly reduced by drag applied before firing)
+        let expected_y = 100.0 * DRAG.powf(DT);
+        assert!(approx_eq(m.bullets[0].vel.y, expected_y));
+    }
+
+    #[test]
+    fn dead_ships_bullets_persist() {
+        let mut m = Match::new(1000);
+
+        // Ship 0 fires a bullet
+        let fire = ShipActions {
+            fire: true,
+            ..Default::default()
+        };
+        m.step([fire, no_action()], DT);
+        assert_eq!(m.bullets.len(), 1);
+        assert_eq!(m.bullets[0].owner, 0);
+
+        // Now kill ship 0 — its bullet should still exist
+        m.ships[0].alive = false;
+        m.step([no_action(), no_action()], DT);
+
+        // Match ends but the bullet should still be tracked
+        // (the match ends on this step because alive_count <= 1)
+        assert!(!m.is_running());
+    }
+
+    #[test]
     fn completed_match_ignores_further_steps() {
         let mut m = Match::new(5);
         let actions = [no_action(), no_action()];
