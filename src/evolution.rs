@@ -1,6 +1,7 @@
 use crate::ai::{Genome, GENOME_SIZE};
 use crate::game::{self, MatchResult, DEFAULT_MAX_TICKS};
 use rand::Rng;
+use rayon::prelude::*;
 use std::fmt;
 
 /// Population size for each generation
@@ -186,7 +187,7 @@ impl Population {
     /// Run all matches for the current generation and update fitness scores.
     ///
     /// Each individual plays MATCHES_PER_INDIVIDUAL matches against randomly
-    /// selected opponents. Fitness is accumulated from match results.
+    /// selected opponents. Matches are run in parallel using rayon for speed.
     pub fn evaluate_generation(&mut self, rng: &mut impl Rng) {
         // Reset fitness for all individuals
         for ind in self.individuals.iter_mut() {
@@ -197,33 +198,44 @@ impl Population {
 
         let n = self.individuals.len();
 
+        // Pre-generate all match pairings
+        let mut match_pairs: Vec<(usize, usize)> = Vec::with_capacity(n * MATCHES_PER_INDIVIDUAL);
         for i in 0..n {
             for _ in 0..MATCHES_PER_INDIVIDUAL {
-                // Pick a random opponent (not self)
                 let mut j = rng.gen_range(0..n - 1);
                 if j >= i {
                     j += 1;
                 }
+                match_pairs.push((i, j));
+            }
+        }
 
-                let result = game::run_match(
-                    &self.individuals[i].genome,
-                    &self.individuals[j].genome,
-                );
+        // Clone genomes for parallel access
+        let genomes: Vec<Genome> = self.individuals.iter().map(|ind| ind.genome.clone()).collect();
 
-                // Score both participants
-                let (score_i, score_j) = compute_fitness_pair(&result);
+        // Run all matches in parallel
+        let results: Vec<(usize, usize, MatchResult)> = match_pairs
+            .par_iter()
+            .map(|&(i, j)| {
+                let result = game::run_match(&genomes[i], &genomes[j]);
+                (i, j, result)
+            })
+            .collect();
 
-                self.individuals[i].fitness += score_i;
-                self.individuals[i].matches_played += 1;
-                if result.winner == Some(0) {
-                    self.individuals[i].wins += 1;
-                }
+        // Aggregate results back into individuals
+        for (i, j, result) in results {
+            let (score_i, score_j) = compute_fitness_pair(&result);
 
-                self.individuals[j].fitness += score_j;
-                self.individuals[j].matches_played += 1;
-                if result.winner == Some(1) {
-                    self.individuals[j].wins += 1;
-                }
+            self.individuals[i].fitness += score_i;
+            self.individuals[i].matches_played += 1;
+            if result.winner == Some(0) {
+                self.individuals[i].wins += 1;
+            }
+
+            self.individuals[j].fitness += score_j;
+            self.individuals[j].matches_played += 1;
+            if result.winner == Some(1) {
+                self.individuals[j].wins += 1;
             }
         }
 
