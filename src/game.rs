@@ -69,6 +69,10 @@ pub struct MatchResult {
     pub hits: [u32; 2],
     /// Shots fired by each ship
     pub shots_fired: [u32; 2],
+    /// Closest approach distance each ship achieved to the enemy
+    pub closest_approach: [f32; 2],
+    /// Average distance to enemy over the match for each ship
+    pub avg_distance: [f32; 2],
 }
 
 /// The game state for a single match
@@ -80,6 +84,9 @@ pub struct Match {
     pub result: Option<MatchResult>,
     hits: [u32; 2],
     shots_fired: [u32; 2],
+    closest_approach: [f32; 2],
+    total_distance: [f32; 2],
+    distance_samples: u32,
 }
 
 impl Match {
@@ -96,6 +103,9 @@ impl Match {
             result: None,
             hits: [0; 2],
             shots_fired: [0; 2],
+            closest_approach: [f32::MAX; 2],
+            total_distance: [0.0; 2],
+            distance_samples: 0,
         }
     }
 
@@ -181,6 +191,18 @@ impl Match {
             self.bullets.swap_remove(bi);
         }
 
+        // Track proximity between ships
+        if self.ships[0].alive && self.ships[1].alive {
+            let dist = physics::toroidal_distance(self.ships[0].pos, self.ships[1].pos);
+            for i in 0..2 {
+                if dist < self.closest_approach[i] {
+                    self.closest_approach[i] = dist;
+                }
+                self.total_distance[i] += dist;
+            }
+            self.distance_samples += 1;
+        }
+
         self.tick += 1;
 
         // Check end conditions
@@ -196,11 +218,22 @@ impl Match {
                 None
             };
 
+            let avg_distance = if self.distance_samples > 0 {
+                [
+                    self.total_distance[0] / self.distance_samples as f32,
+                    self.total_distance[1] / self.distance_samples as f32,
+                ]
+            } else {
+                [500.0; 2] // default to half arena
+            };
+
             self.result = Some(MatchResult {
                 winner,
                 ticks: self.tick,
                 hits: self.hits,
                 shots_fired: self.shots_fired,
+                closest_approach: self.closest_approach.map(|d| if d == f32::MAX { 500.0 } else { d }),
+                avg_distance,
             });
         }
     }
@@ -819,5 +852,58 @@ mod tests {
         // Same genomes, same starting conditions → deterministic result
         assert_eq!(r1.ticks, r2.ticks);
         assert_eq!(r1.winner, r2.winner);
+    }
+
+    // --- Distance tracking ---
+
+    #[test]
+    fn match_tracks_closest_approach() {
+        let mut m = Match::new(100);
+        let actions = [no_action(), no_action()];
+
+        for _ in 0..100 {
+            m.step(actions, DT);
+        }
+
+        let result = m.result.as_ref().unwrap();
+        // Ships start at (250,500) and (750,500), 500px apart
+        // Without movement they stay at 500px, so closest approach ≈ 500
+        assert!(result.closest_approach[0] > 0.0);
+        assert!(result.closest_approach[0] <= 500.0 + EPSILON);
+    }
+
+    #[test]
+    fn match_tracks_avg_distance() {
+        let mut m = Match::new(100);
+        let actions = [no_action(), no_action()];
+
+        for _ in 0..100 {
+            m.step(actions, DT);
+        }
+
+        let result = m.result.as_ref().unwrap();
+        // Ships at rest, avg distance should be very close to 500
+        assert!(result.avg_distance[0] > 400.0);
+        assert!(result.avg_distance[0] < 600.0);
+    }
+
+    #[test]
+    fn approaching_ships_reduce_closest_approach() {
+        let mut m = Match::new(60);
+        // Thrust ship 0 toward ship 1 (already facing right toward ship1)
+        let thrust = ShipActions {
+            thrust: 1.0,
+            ..Default::default()
+        };
+
+        for _ in 0..60 {
+            if !m.is_running() { break; }
+            m.step([thrust, no_action()], DT);
+        }
+
+        let result = m.result.as_ref().unwrap();
+        // Ship 0 thrusted toward ship 1, so closest approach should be < initial 500px
+        assert!(result.closest_approach[0] < 500.0,
+            "Approaching ship should have closer approach: {}", result.closest_approach[0]);
     }
 }

@@ -236,6 +236,9 @@ impl Population {
     }
 }
 
+/// Half the arena diagonal, used as the max meaningful distance for normalization
+const MAX_DISTANCE: f32 = 707.0; // ~sqrt(500^2 + 500^2), half diagonal of 1000x1000
+
 /// Compute fitness scores for both participants from a match result.
 ///
 /// Returns (score_for_ship_0, score_for_ship_1).
@@ -245,6 +248,8 @@ impl Population {
 /// - Kill speed bonus: up to +5 points for faster kills
 /// - Accuracy bonus: up to +3 points for hit rate
 /// - Aggression bonus: +1 point for firing at least once
+/// - Proximity bonus: up to +3 points for staying close to the enemy
+/// - Approach bonus: up to +2 points for achieving a close approach
 /// - Survival on timeout: +2 points if alive at timeout (no winner)
 pub fn compute_fitness_pair(result: &MatchResult) -> (f32, f32) {
     let mut scores = [0.0f32; 2];
@@ -270,6 +275,16 @@ pub fn compute_fitness_pair(result: &MatchResult) -> (f32, f32) {
         if result.shots_fired[i] > 0 {
             scores[i] += 1.0;
         }
+
+        // Proximity bonus: reward staying close to the enemy (encourages engagement)
+        // Ships that maintain closer average distance score higher
+        let proximity_ratio = 1.0 - (result.avg_distance[i] / MAX_DISTANCE).min(1.0);
+        scores[i] += 3.0 * proximity_ratio;
+
+        // Approach bonus: reward achieving a close approach to the enemy
+        // This gives gradient signal for learning to navigate toward the opponent
+        let approach_ratio = 1.0 - (result.closest_approach[i] / MAX_DISTANCE).min(1.0);
+        scores[i] += 2.0 * approach_ratio;
 
         // Survival bonus on timeout (draw)
         if result.winner.is_none() && result.ticks >= DEFAULT_MAX_TICKS {
@@ -529,15 +544,26 @@ mod tests {
 
     // --- Fitness scoring ---
 
+    /// Helper to create a MatchResult with default proximity fields
+    fn match_result(
+        winner: Option<usize>,
+        ticks: u32,
+        hits: [u32; 2],
+        shots_fired: [u32; 2],
+    ) -> MatchResult {
+        MatchResult {
+            winner,
+            ticks,
+            hits,
+            shots_fired,
+            closest_approach: [200.0; 2],
+            avg_distance: [300.0; 2],
+        }
+    }
+
     #[test]
     fn fitness_win_scores_higher_than_loss() {
-        let result = MatchResult {
-            winner: Some(0),
-            ticks: 900,
-            hits: [1, 0],
-
-            shots_fired: [4, 3],
-        };
+        let result = match_result(Some(0), 900, [1, 0], [4, 3]);
 
         let (s0, s1) = compute_fitness_pair(&result);
         assert!(s0 > s1, "Winner should score higher: {} vs {}", s0, s1);
@@ -545,20 +571,8 @@ mod tests {
 
     #[test]
     fn fitness_faster_kill_scores_higher() {
-        let fast = MatchResult {
-            winner: Some(0),
-            ticks: 100,
-            hits: [1, 0],
-
-            shots_fired: [1, 0],
-        };
-        let slow = MatchResult {
-            winner: Some(0),
-            ticks: 1500,
-            hits: [1, 0],
-
-            shots_fired: [1, 0],
-        };
+        let fast = match_result(Some(0), 100, [1, 0], [1, 0]);
+        let slow = match_result(Some(0), 1500, [1, 0], [1, 0]);
 
         let (fast_score, _) = compute_fitness_pair(&fast);
         let (slow_score, _) = compute_fitness_pair(&slow);
@@ -567,13 +581,7 @@ mod tests {
 
     #[test]
     fn fitness_timeout_gives_survival_bonus() {
-        let timeout = MatchResult {
-            winner: None,
-            ticks: DEFAULT_MAX_TICKS,
-            hits: [0, 0],
-
-            shots_fired: [0, 0],
-        };
+        let timeout = match_result(None, DEFAULT_MAX_TICKS, [0, 0], [0, 0]);
 
         let (s0, s1) = compute_fitness_pair(&timeout);
         // Both ships survive, both get survival bonus
@@ -583,13 +591,7 @@ mod tests {
 
     #[test]
     fn fitness_accuracy_rewarded() {
-        let accurate = MatchResult {
-            winner: Some(0),
-            ticks: 500,
-            hits: [1, 0],
-
-            shots_fired: [1, 5], // ship 0: perfect accuracy, ship 1: 0% accuracy
-        };
+        let accurate = match_result(Some(0), 500, [1, 0], [1, 5]);
 
         let (s0, s1) = compute_fitness_pair(&accurate);
         // Ship 0 has accuracy bonus (3.0 * 1.0) + win + aggression
@@ -599,20 +601,8 @@ mod tests {
 
     #[test]
     fn fitness_aggression_rewarded() {
-        let passive = MatchResult {
-            winner: None,
-            ticks: DEFAULT_MAX_TICKS,
-            hits: [0, 0],
-
-            shots_fired: [0, 0],
-        };
-        let active = MatchResult {
-            winner: None,
-            ticks: DEFAULT_MAX_TICKS,
-            hits: [0, 0],
-
-            shots_fired: [5, 0],
-        };
+        let passive = match_result(None, DEFAULT_MAX_TICKS, [0, 0], [0, 0]);
+        let active = match_result(None, DEFAULT_MAX_TICKS, [0, 0], [5, 0]);
 
         let (passive_s0, _) = compute_fitness_pair(&passive);
         let (active_s0, _) = compute_fitness_pair(&active);
@@ -621,17 +611,59 @@ mod tests {
 
     #[test]
     fn fitness_no_negative_scores() {
-        let result = MatchResult {
-            winner: Some(1),
-            ticks: 100,
-            hits: [0, 1],
-
-            shots_fired: [0, 1],
-        };
+        let result = match_result(Some(1), 100, [0, 1], [0, 1]);
 
         let (s0, s1) = compute_fitness_pair(&result);
         assert!(s0 >= 0.0, "Fitness should never be negative");
         assert!(s1 >= 0.0, "Fitness should never be negative");
+    }
+
+    #[test]
+    fn fitness_proximity_rewarded() {
+        let close = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            shots_fired: [0, 0],
+            closest_approach: [50.0; 2],
+            avg_distance: [100.0; 2],
+        };
+        let far = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            shots_fired: [0, 0],
+            closest_approach: [500.0; 2],
+            avg_distance: [600.0; 2],
+        };
+
+        let (close_s0, _) = compute_fitness_pair(&close);
+        let (far_s0, _) = compute_fitness_pair(&far);
+        assert!(close_s0 > far_s0, "Closer ships should score higher: {} vs {}", close_s0, far_s0);
+    }
+
+    #[test]
+    fn fitness_approach_rewarded() {
+        let approached = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            shots_fired: [0, 0],
+            closest_approach: [30.0; 2],
+            avg_distance: [300.0; 2],
+        };
+        let avoided = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            shots_fired: [0, 0],
+            closest_approach: [400.0; 2],
+            avg_distance: [300.0; 2],
+        };
+
+        let (approach_s0, _) = compute_fitness_pair(&approached);
+        let (avoid_s0, _) = compute_fitness_pair(&avoided);
+        assert!(approach_s0 > avoid_s0, "Closer approach should score higher: {} vs {}", approach_s0, avoid_s0);
     }
 
     // --- Evaluate generation ---
