@@ -4,8 +4,11 @@ mod game;
 mod physics;
 mod render;
 
+use ai::Genome;
 use evolution::Population;
+use game::{Match, DEFAULT_MAX_TICKS, TICK_DT};
 use macroquad::prelude::*;
+use ::rand::Rng;
 use ::rand::SeedableRng;
 use ::rand::rngs::StdRng;
 
@@ -24,121 +27,158 @@ async fn main() {
     let mut rng = StdRng::from_entropy();
     let mut population = Population::new(&mut rng);
     let mut stats_history: Vec<evolution::GenerationStats> = Vec::new();
-    let max_generations = 100;
+    let max_generations: u32 = 100;
 
-    // Show initial screen
+    // Showcase match state
+    let mut showcase_match: Option<Match> = None;
+    let mut showcase_genomes: [Genome; 2] = [
+        population.individuals[0].genome.clone(),
+        population.individuals[1].genome.clone(),
+    ];
+    let mut result_pause: u32 = 0;
+    let mut show_stats = false;
+
+    // Show splash screen while first generation runs
     clear_background(BLACK);
-    draw_text(
-        "Spaceship Duel Evolution",
-        200.0,
-        380.0,
-        30.0,
-        WHITE,
-    );
-    draw_text(
-        "Starting evolution...",
-        280.0,
-        420.0,
-        20.0,
-        GRAY,
-    );
+    draw_text("Spaceship Duel Evolution", 200.0, 380.0, 30.0, WHITE);
+    draw_text("Starting evolution...", 280.0, 420.0, 20.0, GRAY);
     next_frame().await;
 
-    // Evolution loop: run one generation per frame
     loop {
-        if population.generation >= max_generations as u32 {
-            // Evolution complete — show final stats
-            clear_background(BLACK);
-            draw_text("Evolution Complete!", 250.0, 60.0, 30.0, GREEN);
+        let sw = screen_width();
+        let sh = screen_height();
 
-            if let Some(last) = stats_history.last() {
-                draw_text(
-                    &format!("Final Generation: {}", last.generation),
-                    50.0,
-                    120.0,
-                    20.0,
-                    WHITE,
-                );
-                draw_text(
-                    &format!("Best Fitness: {:.2}", last.best_fitness),
-                    50.0,
-                    150.0,
-                    20.0,
-                    WHITE,
-                );
-                draw_text(
-                    &format!("Avg Fitness: {:.2}", last.avg_fitness),
-                    50.0,
-                    180.0,
-                    20.0,
-                    WHITE,
-                );
-            }
-
-            draw_fitness_graph(&stats_history, screen_width(), screen_height());
-            next_frame().await;
-            continue;
+        // Toggle stats view
+        if is_key_pressed(KeyCode::Tab) {
+            show_stats = !show_stats;
         }
 
-        // Run one generation
-        let stats = population.run_generation(&mut rng);
-        println!("{}", stats);
-        stats_history.push(stats);
+        // If no active showcase, run next generation and start one
+        if showcase_match.is_none() {
+            // Run next generation if evolution is still in progress
+            if population.generation < max_generations {
+                let stats = population.run_generation(&mut rng);
+                println!("{}", stats);
+                stats_history.push(stats);
+            }
 
-        // Draw progress
-        clear_background(BLACK);
-        draw_text("Spaceship Duel Evolution", 250.0, 40.0, 30.0, WHITE);
+            // Pick genomes for showcase match
+            if population.generation >= max_generations {
+                // Post-evolution: random pair from top 10 for variety
+                let top_n = 10.min(population.individuals.len());
+                let i = rng.gen_range(0..top_n);
+                let mut j = rng.gen_range(0..top_n - 1);
+                if j >= i {
+                    j += 1;
+                }
+                showcase_genomes = [
+                    population.individuals[i].genome.clone(),
+                    population.individuals[j].genome.clone(),
+                ];
+            } else {
+                // During evolution: top 2 elites from the generation just completed
+                showcase_genomes = [
+                    population.individuals[0].genome.clone(),
+                    population.individuals[1].genome.clone(),
+                ];
+            }
 
-        let current = stats_history.last().unwrap();
-        draw_text(
-            &format!("Generation: {} / {}", current.generation + 1, max_generations),
-            50.0,
-            80.0,
-            20.0,
-            WHITE,
-        );
-        draw_text(
-            &format!("Best Fitness: {:.2}", current.best_fitness),
-            50.0,
-            110.0,
-            20.0,
-            GREEN,
-        );
-        draw_text(
-            &format!("Avg Fitness:  {:.2}", current.avg_fitness),
-            50.0,
-            140.0,
-            20.0,
-            SKYBLUE,
-        );
-        draw_text(
-            &format!(
-                "Wins: {} / {} matches",
-                current.total_wins, current.total_matches
-            ),
-            50.0,
-            170.0,
-            20.0,
-            YELLOW,
-        );
+            showcase_match = Some(Match::new(DEFAULT_MAX_TICKS));
+            result_pause = 0;
+        }
 
-        // Draw fitness graph
-        draw_fitness_graph(&stats_history, screen_width(), screen_height());
+        // Advance and render the showcase match
+        if let Some(ref mut game) = showcase_match {
+            // Advance simulation
+            if game.is_running() {
+                let actions = [
+                    showcase_genomes[0].decide(game, 0),
+                    showcase_genomes[1].decide(game, 1),
+                ];
+                game.step(actions, TICK_DT);
+            } else {
+                result_pause += 1;
+            }
+
+            if show_stats {
+                // Stats/graph view
+                clear_background(BLACK);
+                draw_text("Spaceship Duel Evolution", 200.0, 40.0, 30.0, WHITE);
+
+                if let Some(stats) = stats_history.last() {
+                    let is_complete = population.generation >= max_generations;
+                    let status = if is_complete { "COMPLETE" } else { "Evolving" };
+                    let status_color = if is_complete { GREEN } else { YELLOW };
+
+                    draw_text(
+                        &format!("Status: {}", status),
+                        50.0, 80.0, 20.0, status_color,
+                    );
+                    draw_text(
+                        &format!("Generation: {} / {}", stats.generation + 1, max_generations),
+                        50.0, 110.0, 20.0, WHITE,
+                    );
+                    draw_text(
+                        &format!("Best Fitness: {:.2}", stats.best_fitness),
+                        50.0, 140.0, 20.0, GREEN,
+                    );
+                    draw_text(
+                        &format!("Avg Fitness:  {:.2}", stats.avg_fitness),
+                        50.0, 170.0, 20.0, SKYBLUE,
+                    );
+                    draw_text(
+                        &format!("Wins: {} / {} matches", stats.total_wins, stats.total_matches),
+                        50.0, 200.0, 20.0, YELLOW,
+                    );
+                }
+
+                draw_fitness_graph(&stats_history, sw, sh);
+                draw_text(
+                    "TAB: match view  SPACE: skip match",
+                    10.0, sh - 10.0, 16.0, GRAY,
+                );
+            } else {
+                // Match view
+                render::draw_match(game, sw, sh);
+
+                let gen = stats_history.last().map_or(0, |s| s.generation);
+                let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
+                render::draw_hud(gen, best_fit, game);
+
+                let is_complete = population.generation >= max_generations;
+                if is_complete {
+                    draw_text(
+                        "Evolution Complete  TAB: stats  SPACE: next match",
+                        10.0, sh - 10.0, 16.0, GREEN,
+                    );
+                } else {
+                    draw_text(
+                        "SPACE: skip  TAB: stats",
+                        10.0, sh - 10.0, 16.0, GRAY,
+                    );
+                }
+            }
+
+            // Transition to next match: on skip or after result pause
+            if is_key_pressed(KeyCode::Space) || result_pause >= 90 {
+                showcase_match = None;
+            }
+        }
 
         next_frame().await;
     }
 }
 
-/// Draw a simple fitness graph showing best and average fitness over generations
+/// Draw a fitness graph showing best and average fitness over generations
 fn draw_fitness_graph(history: &[evolution::GenerationStats], screen_w: f32, screen_h: f32) {
     if history.is_empty() {
         return;
     }
 
     let graph_x = 50.0;
-    let graph_y = 220.0;
+    let graph_y = 240.0;
     let graph_w = screen_w - 100.0;
-    let graph_h = screen_h - 260.0;
+    let graph_h = screen_h - 280.0;
 
     // Draw axes
     draw_line(graph_x, graph_y, graph_x, graph_y + graph_h, 1.0, DARKGRAY);
@@ -190,8 +230,16 @@ fn draw_fitness_graph(history: &[evolution::GenerationStats], screen_w: f32, scr
     }
 
     // Legend
-    draw_line(graph_x + graph_w - 150.0, graph_y + 10.0, graph_x + graph_w - 130.0, graph_y + 10.0, 2.0, GREEN);
+    draw_line(
+        graph_x + graph_w - 150.0, graph_y + 10.0,
+        graph_x + graph_w - 130.0, graph_y + 10.0,
+        2.0, GREEN,
+    );
     draw_text("Best", graph_x + graph_w - 125.0, graph_y + 15.0, 16.0, GREEN);
-    draw_line(graph_x + graph_w - 150.0, graph_y + 30.0, graph_x + graph_w - 130.0, graph_y + 30.0, 2.0, SKYBLUE);
+    draw_line(
+        graph_x + graph_w - 150.0, graph_y + 30.0,
+        graph_x + graph_w - 130.0, graph_y + 30.0,
+        2.0, SKYBLUE,
+    );
     draw_text("Avg", graph_x + graph_w - 125.0, graph_y + 35.0, 16.0, SKYBLUE);
 }
