@@ -6,7 +6,7 @@ mod render;
 
 use ai::Genome;
 use evolution::{GenerationStats, Population};
-use game::{Match, DEFAULT_MAX_TICKS, TICK_DT};
+use game::{Match, ShipActions, DEFAULT_MAX_TICKS, TICK_DT};
 use macroquad::prelude::*;
 use ::rand::Rng;
 use ::rand::SeedableRng;
@@ -69,6 +69,9 @@ async fn main() {
     let mut result_pause: u32 = 0;
     let mut show_stats = false;
     let mut evolution_complete = false;
+    let mut current_actions: [ShipActions; 2] = [ShipActions::default(); 2];
+    let mut was_alive: [bool; 2] = [true, true];
+    let mut explosions: Vec<render::Explosion> = Vec::new();
 
     loop {
         let sw = screen_width();
@@ -99,20 +102,40 @@ async fn main() {
             }
             showcase_match = Some(Match::new(DEFAULT_MAX_TICKS));
             result_pause = 0;
+            was_alive = [true, true];
+            explosions.clear();
         }
 
         // Advance and render the showcase match
         if let Some(ref mut game) = showcase_match {
             // Advance simulation
             if game.is_running() {
-                let actions = [
+                current_actions = [
                     showcase_genomes[0].decide(game, 0),
                     showcase_genomes[1].decide(game, 1),
                 ];
-                game.step(actions, TICK_DT);
+                game.step(current_actions, TICK_DT);
+
+                // Detect newly destroyed ships and spawn explosions
+                for i in 0..2 {
+                    if was_alive[i] && !game.ships[i].alive {
+                        let (sx, sy) = render::ship_screen_pos(&game.ships[i], sw, sh);
+                        let scale = render::screen_scale(sw);
+                        explosions.push(render::Explosion::new(
+                            sx, sy, render::ship_color(i), scale,
+                        ));
+                    }
+                    was_alive[i] = game.ships[i].alive;
+                }
             } else {
                 result_pause += 1;
             }
+
+            // Update explosion effects
+            for expl in &mut explosions {
+                expl.update();
+            }
+            explosions.retain(|e| !e.is_done());
 
             if show_stats {
                 // Stats/graph view
@@ -154,7 +177,10 @@ async fn main() {
                 );
             } else {
                 // Match view
-                render::draw_match(game, sw, sh);
+                render::draw_match(game, &current_actions, sw, sh);
+                for expl in &explosions {
+                    expl.draw();
+                }
 
                 let gen = stats_history.last().map_or(0, |s| s.generation);
                 let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
