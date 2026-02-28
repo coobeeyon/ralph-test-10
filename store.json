@@ -35,11 +35,10 @@
       "title": "Match system: game loop, win conditions, time limit",
       "description": "Implement match loop that runs a duel between two ships. Match ends when a ship is destroyed or time limit reached. Track match results.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.482334111Z",
-      "updated_at": "2026-02-28T22:05:10.906961756Z"
+      "updated_at": "2026-02-28T22:09:30.603804101Z"
     },
     "lb-dmbs": {
       "id": "lb-dmbs",
