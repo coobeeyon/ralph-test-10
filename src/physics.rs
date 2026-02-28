@@ -41,22 +41,6 @@ impl Vec2 {
         (self.x * self.x + self.y * self.y).sqrt()
     }
 
-    pub fn normalize(self) -> Self {
-        let len = self.length();
-        if len < 1e-8 {
-            Self::default()
-        } else {
-            Self {
-                x: self.x / len,
-                y: self.y / len,
-            }
-        }
-    }
-
-    pub fn dot(self, other: Self) -> f32 {
-        self.x * other.x + self.y * other.y
-    }
-
     /// Unit vector from an angle (0 = right, PI/2 = down)
     pub fn from_angle(angle: f32) -> Self {
         Self {
@@ -169,31 +153,6 @@ mod tests {
         assert!(approx_eq(Vec2::new(3.0, 4.0).length(), 5.0));
         assert!(approx_eq(Vec2::new(0.0, 0.0).length(), 0.0));
         assert!(approx_eq(Vec2::new(1.0, 0.0).length(), 1.0));
-    }
-
-    #[test]
-    fn vec2_normalize() {
-        let v = Vec2::new(3.0, 4.0).normalize();
-        assert!(approx_eq(v.length(), 1.0));
-        assert!(approx_eq(v.x, 0.6));
-        assert!(approx_eq(v.y, 0.8));
-
-        // Zero vector normalizes to zero
-        let z = Vec2::default().normalize();
-        assert_eq!(z.x, 0.0);
-        assert_eq!(z.y, 0.0);
-    }
-
-    #[test]
-    fn vec2_dot() {
-        let a = Vec2::new(1.0, 2.0);
-        let b = Vec2::new(3.0, 4.0);
-        assert!(approx_eq(a.dot(b), 11.0));
-
-        // Perpendicular vectors
-        let c = Vec2::new(1.0, 0.0);
-        let d = Vec2::new(0.0, 1.0);
-        assert!(approx_eq(c.dot(d), 0.0));
     }
 
     #[test]

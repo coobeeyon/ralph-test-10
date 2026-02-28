@@ -88,14 +88,6 @@ impl Population {
         }
     }
 
-    /// Get the best individual in the current population
-    pub fn best(&self) -> &Individual {
-        self.individuals
-            .iter()
-            .max_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap())
-            .unwrap()
-    }
-
     /// Compute statistics for the current generation
     pub fn generation_stats(&self) -> GenerationStats {
         let fitnesses: Vec<f32> = self.individuals.iter().map(|i| i.fitness).collect();
@@ -335,19 +327,6 @@ mod tests {
         }
     }
 
-    // --- Best selection ---
-
-    #[test]
-    fn best_returns_highest_fitness() {
-        let mut rng = seeded_rng();
-        let mut pop = Population::new(&mut rng);
-        pop.individuals[5].fitness = 100.0;
-        pop.individuals[50].fitness = 50.0;
-
-        let best = pop.best();
-        assert_eq!(best.fitness, 100.0);
-    }
-
     // --- Tournament selection ---
 
     #[test]
@@ -496,8 +475,12 @@ mod tests {
             ind.fitness = i as f32;
         }
 
-        // The best individual before
-        let best_weights = pop.best().genome.weights.clone();
+        // The best individual before (highest fitness = last index)
+        let best_weights = pop.individuals
+            .iter()
+            .max_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap())
+            .unwrap()
+            .genome.weights.clone();
 
         pop.next_generation(&mut rng);
 
@@ -552,7 +535,7 @@ mod tests {
             winner: Some(0),
             ticks: 900,
             hits: [1, 0],
-            distance_traveled: [100.0, 50.0],
+
             shots_fired: [4, 3],
         };
 
@@ -566,14 +549,14 @@ mod tests {
             winner: Some(0),
             ticks: 100,
             hits: [1, 0],
-            distance_traveled: [50.0, 20.0],
+
             shots_fired: [1, 0],
         };
         let slow = MatchResult {
             winner: Some(0),
             ticks: 1500,
             hits: [1, 0],
-            distance_traveled: [200.0, 100.0],
+
             shots_fired: [1, 0],
         };
 
@@ -588,7 +571,7 @@ mod tests {
             winner: None,
             ticks: DEFAULT_MAX_TICKS,
             hits: [0, 0],
-            distance_traveled: [100.0, 100.0],
+
             shots_fired: [0, 0],
         };
 
@@ -604,7 +587,7 @@ mod tests {
             winner: Some(0),
             ticks: 500,
             hits: [1, 0],
-            distance_traveled: [100.0, 50.0],
+
             shots_fired: [1, 5], // ship 0: perfect accuracy, ship 1: 0% accuracy
         };
 
@@ -620,14 +603,14 @@ mod tests {
             winner: None,
             ticks: DEFAULT_MAX_TICKS,
             hits: [0, 0],
-            distance_traveled: [100.0, 100.0],
+
             shots_fired: [0, 0],
         };
         let active = MatchResult {
             winner: None,
             ticks: DEFAULT_MAX_TICKS,
             hits: [0, 0],
-            distance_traveled: [100.0, 100.0],
+
             shots_fired: [5, 0],
         };
 
@@ -642,7 +625,7 @@ mod tests {
             winner: Some(1),
             ticks: 100,
             hits: [0, 1],
-            distance_traveled: [10.0, 10.0],
+
             shots_fired: [0, 1],
         };
 

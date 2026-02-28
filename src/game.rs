@@ -67,8 +67,6 @@ pub struct MatchResult {
     pub ticks: u32,
     /// Damage dealt by each ship (number of hits landed)
     pub hits: [u32; 2],
-    /// Distance each ship traveled
-    pub distance_traveled: [f32; 2],
     /// Shots fired by each ship
     pub shots_fired: [u32; 2],
 }
@@ -81,7 +79,6 @@ pub struct Match {
     pub max_ticks: u32,
     pub result: Option<MatchResult>,
     hits: [u32; 2],
-    distance_traveled: [f32; 2],
     shots_fired: [u32; 2],
 }
 
@@ -98,7 +95,6 @@ impl Match {
             max_ticks,
             result: None,
             hits: [0; 2],
-            distance_traveled: [0.0; 2],
             shots_fired: [0; 2],
         }
     }
@@ -138,7 +134,6 @@ impl Match {
 
             // Movement
             ship.pos = physics::wrap_position(ship.pos + ship.vel * dt);
-            self.distance_traveled[i] += (ship.vel * dt).length();
 
             // Fire bullet
             if act.fire && ship.bullets_remaining > 0 {
@@ -205,7 +200,6 @@ impl Match {
                 winner,
                 ticks: self.tick,
                 hits: self.hits,
-                distance_traveled: self.distance_traveled,
                 shots_fired: self.shots_fired,
             });
         }
@@ -633,22 +627,6 @@ mod tests {
 
         assert!(approx_eq(m.ships[0].pos.x, pos.x));
         assert!(approx_eq(m.ships[0].pos.y, pos.y));
-    }
-
-    #[test]
-    fn match_tracks_distance() {
-        let mut m = Match::new(1000);
-        let thrust = ShipActions {
-            thrust: 1.0,
-            ..Default::default()
-        };
-
-        for _ in 0..60 {
-            m.step([thrust, no_action()], DT);
-        }
-
-        assert!(m.distance_traveled[0] > 0.0);
-        assert!(approx_eq(m.distance_traveled[1], 0.0));
     }
 
     #[test]
