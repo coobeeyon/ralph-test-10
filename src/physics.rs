@@ -139,3 +139,260 @@ pub fn normalize_angle(angle: f32) -> f32 {
     }
     a
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::PI;
+
+    const EPSILON: f32 = 1e-4;
+
+    fn approx_eq(a: f32, b: f32) -> bool {
+        (a - b).abs() < EPSILON
+    }
+
+    // --- Vec2 basic operations ---
+
+    #[test]
+    fn vec2_new_and_default() {
+        let v = Vec2::new(3.0, 4.0);
+        assert_eq!(v.x, 3.0);
+        assert_eq!(v.y, 4.0);
+
+        let d = Vec2::default();
+        assert_eq!(d.x, 0.0);
+        assert_eq!(d.y, 0.0);
+    }
+
+    #[test]
+    fn vec2_length() {
+        assert!(approx_eq(Vec2::new(3.0, 4.0).length(), 5.0));
+        assert!(approx_eq(Vec2::new(0.0, 0.0).length(), 0.0));
+        assert!(approx_eq(Vec2::new(1.0, 0.0).length(), 1.0));
+    }
+
+    #[test]
+    fn vec2_normalize() {
+        let v = Vec2::new(3.0, 4.0).normalize();
+        assert!(approx_eq(v.length(), 1.0));
+        assert!(approx_eq(v.x, 0.6));
+        assert!(approx_eq(v.y, 0.8));
+
+        // Zero vector normalizes to zero
+        let z = Vec2::default().normalize();
+        assert_eq!(z.x, 0.0);
+        assert_eq!(z.y, 0.0);
+    }
+
+    #[test]
+    fn vec2_dot() {
+        let a = Vec2::new(1.0, 2.0);
+        let b = Vec2::new(3.0, 4.0);
+        assert!(approx_eq(a.dot(b), 11.0));
+
+        // Perpendicular vectors
+        let c = Vec2::new(1.0, 0.0);
+        let d = Vec2::new(0.0, 1.0);
+        assert!(approx_eq(c.dot(d), 0.0));
+    }
+
+    #[test]
+    fn vec2_from_angle() {
+        // 0 radians = pointing right
+        let v = Vec2::from_angle(0.0);
+        assert!(approx_eq(v.x, 1.0));
+        assert!(approx_eq(v.y, 0.0));
+
+        // PI/2 = pointing down
+        let v = Vec2::from_angle(PI / 2.0);
+        assert!(approx_eq(v.x, 0.0));
+        assert!(approx_eq(v.y, 1.0));
+
+        // PI = pointing left
+        let v = Vec2::from_angle(PI);
+        assert!(approx_eq(v.x, -1.0));
+        assert!(approx_eq(v.y, 0.0));
+    }
+
+    #[test]
+    fn vec2_add() {
+        let r = Vec2::new(1.0, 2.0) + Vec2::new(3.0, 4.0);
+        assert!(approx_eq(r.x, 4.0));
+        assert!(approx_eq(r.y, 6.0));
+    }
+
+    #[test]
+    fn vec2_sub() {
+        let r = Vec2::new(5.0, 7.0) - Vec2::new(2.0, 3.0);
+        assert!(approx_eq(r.x, 3.0));
+        assert!(approx_eq(r.y, 4.0));
+    }
+
+    #[test]
+    fn vec2_mul_scalar() {
+        let r = Vec2::new(2.0, 3.0) * 4.0;
+        assert!(approx_eq(r.x, 8.0));
+        assert!(approx_eq(r.y, 12.0));
+    }
+
+    // --- Toroidal wrapping ---
+
+    #[test]
+    fn wrap_position_inside_arena() {
+        let p = wrap_position(Vec2::new(500.0, 500.0));
+        assert!(approx_eq(p.x, 500.0));
+        assert!(approx_eq(p.y, 500.0));
+    }
+
+    #[test]
+    fn wrap_position_past_right_edge() {
+        let p = wrap_position(Vec2::new(1050.0, 500.0));
+        assert!(approx_eq(p.x, 50.0));
+        assert!(approx_eq(p.y, 500.0));
+    }
+
+    #[test]
+    fn wrap_position_past_left_edge() {
+        let p = wrap_position(Vec2::new(-50.0, 500.0));
+        assert!(approx_eq(p.x, 950.0));
+        assert!(approx_eq(p.y, 500.0));
+    }
+
+    #[test]
+    fn wrap_position_past_bottom_edge() {
+        let p = wrap_position(Vec2::new(500.0, 1100.0));
+        assert!(approx_eq(p.x, 500.0));
+        assert!(approx_eq(p.y, 100.0));
+    }
+
+    #[test]
+    fn wrap_position_past_top_edge() {
+        let p = wrap_position(Vec2::new(500.0, -100.0));
+        assert!(approx_eq(p.x, 500.0));
+        assert!(approx_eq(p.y, 900.0));
+    }
+
+    #[test]
+    fn wrap_position_corner_wrap() {
+        let p = wrap_position(Vec2::new(-10.0, -10.0));
+        assert!(approx_eq(p.x, 990.0));
+        assert!(approx_eq(p.y, 990.0));
+    }
+
+    #[test]
+    fn wrap_position_exact_boundary() {
+        // At exactly 1000, should wrap to 0
+        let p = wrap_position(Vec2::new(1000.0, 1000.0));
+        assert!(approx_eq(p.x, 0.0));
+        assert!(approx_eq(p.y, 0.0));
+    }
+
+    // --- Toroidal displacement ---
+
+    #[test]
+    fn toroidal_displacement_direct() {
+        // Both points on same side, direct path is shortest
+        let d = toroidal_displacement(Vec2::new(100.0, 100.0), Vec2::new(200.0, 300.0));
+        assert!(approx_eq(d.x, 100.0));
+        assert!(approx_eq(d.y, 200.0));
+    }
+
+    #[test]
+    fn toroidal_displacement_wraps_x() {
+        // Points near opposite x edges — shorter to go through the wrap
+        let d = toroidal_displacement(Vec2::new(950.0, 500.0), Vec2::new(50.0, 500.0));
+        assert!(approx_eq(d.x, 100.0)); // wraps: 50 - 950 + 1000 = 100
+        assert!(approx_eq(d.y, 0.0));
+    }
+
+    #[test]
+    fn toroidal_displacement_wraps_y() {
+        let d = toroidal_displacement(Vec2::new(500.0, 950.0), Vec2::new(500.0, 50.0));
+        assert!(approx_eq(d.x, 0.0));
+        assert!(approx_eq(d.y, 100.0)); // wraps
+    }
+
+    #[test]
+    fn toroidal_displacement_wraps_negative() {
+        // Going backward through the wrap
+        let d = toroidal_displacement(Vec2::new(50.0, 500.0), Vec2::new(950.0, 500.0));
+        assert!(approx_eq(d.x, -100.0)); // wraps: 950 - 50 - 1000 = -100
+        assert!(approx_eq(d.y, 0.0));
+    }
+
+    // --- Toroidal distance ---
+
+    #[test]
+    fn toroidal_distance_direct() {
+        let d = toroidal_distance(Vec2::new(100.0, 100.0), Vec2::new(100.0, 200.0));
+        assert!(approx_eq(d, 100.0));
+    }
+
+    #[test]
+    fn toroidal_distance_wraps() {
+        // Near opposite edges: should be 100, not 900
+        let d = toroidal_distance(Vec2::new(950.0, 500.0), Vec2::new(50.0, 500.0));
+        assert!(approx_eq(d, 100.0));
+    }
+
+    #[test]
+    fn toroidal_distance_same_point() {
+        let d = toroidal_distance(Vec2::new(500.0, 500.0), Vec2::new(500.0, 500.0));
+        assert!(approx_eq(d, 0.0));
+    }
+
+    // --- Angle normalization ---
+
+    #[test]
+    fn normalize_angle_within_range() {
+        let a = normalize_angle(1.0);
+        assert!(approx_eq(a, 1.0));
+    }
+
+    #[test]
+    fn normalize_angle_positive_overflow() {
+        let a = normalize_angle(3.0 * PI);
+        assert!(approx_eq(a, PI));
+    }
+
+    #[test]
+    fn normalize_angle_negative_overflow() {
+        let a = normalize_angle(-3.0 * PI);
+        assert!(approx_eq(a, -PI));
+    }
+
+    #[test]
+    fn normalize_angle_large_positive() {
+        let a = normalize_angle(7.0);
+        assert!(a >= -PI && a <= PI);
+    }
+
+    #[test]
+    fn normalize_angle_large_negative() {
+        let a = normalize_angle(-7.0);
+        assert!(a >= -PI && a <= PI);
+    }
+
+    // --- Constants sanity checks ---
+
+    #[test]
+    fn arena_dimensions() {
+        assert_eq!(ARENA_WIDTH, 1000.0);
+        assert_eq!(ARENA_HEIGHT, 1000.0);
+    }
+
+    #[test]
+    fn bullet_constants() {
+        assert_eq!(BULLET_MAX_RANGE, 200.0);
+        assert_eq!(BULLETS_PER_ROUND, 8);
+        assert!(BULLET_SPEED > 0.0);
+    }
+
+    #[test]
+    fn ship_constants() {
+        assert!(ROTATION_SPEED > 0.0);
+        assert!(THRUST_ACCEL > 0.0);
+        assert!(DRAG > 0.0 && DRAG < 1.0);
+        assert!(SHIP_RADIUS > 0.0);
+    }
+}
