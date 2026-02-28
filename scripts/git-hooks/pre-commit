@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Pre-commit hook: add project-specific checks (linting, tests) here
+set -euo pipefail
