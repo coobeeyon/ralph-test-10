@@ -161,6 +161,11 @@
       "from_id": "lb-8v89",
       "to_id": "lb-kpm6",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-dmbs",
+      "to_id": "lb-sllx",
+      "dep_type": "blocks"
     }
   ]
 }
