@@ -67,8 +67,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T23:39:24.761292596Z",
-      "updated_at": "2026-02-28T23:39:24.761292596Z"
+      "updated_at": "2026-02-28T23:39:38.319522824Z"
     },
     "lb-oha0": {
       "id": "lb-oha0",
