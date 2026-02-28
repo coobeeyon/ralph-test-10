@@ -67,8 +67,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.500031596Z",
-      "updated_at": "2026-02-28T21:44:14.500031596Z"
+      "updated_at": "2026-02-28T22:19:21.359914153Z"
     },
     "lb-vjw8": {
       "id": "lb-vjw8",
