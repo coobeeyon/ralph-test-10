@@ -1,0 +1,9 @@
+[package]
+name = "spaceship-duel"
+version = "0.1.0"
+edition = "2021"
+description = "Evolving AI combatants for a 1v1 spaceship duel game"
+
+[dependencies]
+macroquad = "0.4"
+rand = "0.8"
