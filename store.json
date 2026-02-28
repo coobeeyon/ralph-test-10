@@ -25,11 +25,10 @@
       "title": "Genome and AI behavior system",
       "description": "Design and implement genome structure that encodes ship behavior. Map genome to decision-making: inputs (enemy position, bullet positions, own state) -> outputs (thrust, rotate, fire). Use a neural network or rule-based system.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.487965405Z",
-      "updated_at": "2026-02-28T21:53:57.332398038Z"
+      "updated_at": "2026-02-28T21:58:51.104830349Z"
     },
     "lb-a1ly": {
       "id": "lb-a1ly",
