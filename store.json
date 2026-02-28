@@ -15,10 +15,10 @@
       "title": "Spaceship Duel Evolution System",
       "description": "Rust program that evolves AI combatants for a 1v1 spaceship duel game with Asteroids-style mechanics, genetic reinforcement learning, and real-time visualization",
       "item_type": "epic",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
       "created_at": "2026-02-28T21:44:02.262114602Z",
-      "updated_at": "2026-02-28T21:44:02.262114602Z"
+      "updated_at": "2026-02-28T23:50:49.949567670Z"
     },
     "lb-8v89": {
       "id": "lb-8v89",
