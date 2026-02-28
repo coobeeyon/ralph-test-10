@@ -37,8 +37,9 @@
       "item_type": "task",
       "status": "open",
       "priority": 2,
+      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.482334111Z",
-      "updated_at": "2026-02-28T21:44:14.482334111Z"
+      "updated_at": "2026-02-28T22:05:10.906961756Z"
     },
     "lb-dmbs": {
       "id": "lb-dmbs",
