@@ -1,6 +1,7 @@
 use crate::ai::{Genome, GENOME_SIZE};
 use crate::game::{self, MatchResult, DEFAULT_MAX_TICKS};
 use rand::Rng;
+use std::fmt;
 
 /// Population size for each generation
 pub const POPULATION_SIZE: usize = 100;
@@ -19,6 +20,32 @@ pub const ELITE_FRACTION: f32 = 0.1;
 
 /// Tournament selection size
 pub const TOURNAMENT_SIZE: usize = 5;
+
+/// Statistics for a single generation
+#[derive(Clone, Debug)]
+pub struct GenerationStats {
+    pub generation: u32,
+    pub best_fitness: f32,
+    pub avg_fitness: f32,
+    pub worst_fitness: f32,
+    pub total_wins: u32,
+    pub total_matches: u32,
+}
+
+impl fmt::Display for GenerationStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Wins: {}/{}",
+            self.generation,
+            self.best_fitness,
+            self.avg_fitness,
+            self.worst_fitness,
+            self.total_wins,
+            self.total_matches,
+        )
+    }
+}
 
 /// A single individual in the population with its fitness
 #[derive(Clone, Debug)]
@@ -67,6 +94,35 @@ impl Population {
             .iter()
             .max_by(|a, b| a.fitness.partial_cmp(&b.fitness).unwrap())
             .unwrap()
+    }
+
+    /// Compute statistics for the current generation
+    pub fn generation_stats(&self) -> GenerationStats {
+        let fitnesses: Vec<f32> = self.individuals.iter().map(|i| i.fitness).collect();
+        let best = fitnesses.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let worst = fitnesses.iter().cloned().fold(f32::INFINITY, f32::min);
+        let avg = fitnesses.iter().sum::<f32>() / fitnesses.len() as f32;
+        let total_wins = self.individuals.iter().map(|i| i.wins).sum();
+        let total_matches = self.individuals.iter().map(|i| i.matches_played).sum();
+
+        GenerationStats {
+            generation: self.generation,
+            best_fitness: best,
+            avg_fitness: avg,
+            worst_fitness: worst,
+            total_wins,
+            total_matches,
+        }
+    }
+
+    /// Run one full generation: evaluate all individuals, collect stats, then evolve.
+    ///
+    /// Returns statistics from the completed generation.
+    pub fn run_generation(&mut self, rng: &mut impl Rng) -> GenerationStats {
+        self.evaluate_generation(rng);
+        let stats = self.generation_stats();
+        self.next_generation(rng);
+        stats
     }
 
     /// Perform tournament selection
@@ -612,6 +668,56 @@ mod tests {
         // At least some should have non-zero fitness
         let has_fitness = pop.individuals.iter().any(|ind| ind.fitness > 0.0);
         assert!(has_fitness, "Some individuals should have positive fitness");
+    }
+
+    // --- Generation stats ---
+
+    #[test]
+    fn generation_stats_computed_correctly() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+        pop.evaluate_generation(&mut rng);
+
+        let stats = pop.generation_stats();
+        assert_eq!(stats.generation, 0);
+        assert!(stats.best_fitness >= stats.avg_fitness);
+        assert!(stats.avg_fitness >= stats.worst_fitness);
+        assert!(stats.total_matches > 0);
+    }
+
+    #[test]
+    fn run_generation_returns_stats_and_advances() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        let stats = pop.run_generation(&mut rng);
+        assert_eq!(stats.generation, 0);
+        assert_eq!(pop.generation, 1); // advanced after run
+        assert!(stats.best_fitness >= 0.0);
+        assert!(stats.total_matches > 0);
+    }
+
+    #[test]
+    fn evolution_improves_over_generations() {
+        let mut rng = StdRng::seed_from_u64(456);
+        let mut pop = Population::new(&mut rng);
+
+        // Run 10 generations and collect stats
+        let mut all_stats = Vec::new();
+        for _ in 0..10 {
+            let stats = pop.run_generation(&mut rng);
+            all_stats.push(stats);
+        }
+
+        // Average fitness of last 3 generations should be higher than first 3
+        let early_avg: f32 = all_stats[..3].iter().map(|s| s.avg_fitness).sum::<f32>() / 3.0;
+        let late_avg: f32 = all_stats[7..].iter().map(|s| s.avg_fitness).sum::<f32>() / 3.0;
+        assert!(
+            late_avg >= early_avg,
+            "Evolution should improve: early avg {:.2} vs late avg {:.2}",
+            early_avg,
+            late_avg
+        );
     }
 
     #[test]
