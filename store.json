@@ -65,11 +65,10 @@
       "title": "Parallelize match evaluation with rayon for faster evolution",
       "description": "The evaluate_generation function runs matches sequentially (1000 per generation). Parallelize using rayon to leverage multiple CPU cores, dramatically speeding up evolution so users see better-evolved AIs sooner.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T23:39:24.761292596Z",
-      "updated_at": "2026-02-28T23:39:38.319522824Z"
+      "updated_at": "2026-02-28T23:42:45.271972951Z"
     },
     "lb-oha0": {
       "id": "lb-oha0",
