@@ -85,11 +85,10 @@
       "title": "Enhance fitness function with proximity and engagement tracking",
       "description": "Add proximity tracking to matches (closest approach, avg distance) and enhance fitness function to reward closing distance and facing the enemy. Currently there is no gradient signal for approach behavior, limiting evolution quality.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T23:18:43.295933112Z",
-      "updated_at": "2026-02-28T23:18:46.316568143Z"
+      "updated_at": "2026-02-28T23:30:07.328685581Z"
     },
     "lb-vjw8": {
       "id": "lb-vjw8",
