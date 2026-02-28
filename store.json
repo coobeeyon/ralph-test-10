@@ -65,11 +65,10 @@
       "title": "Clean up compiler warnings: remove unused code",
       "description": "Remove dead code flagged by compiler warnings: unused method best() in evolution.rs, unused field distance_traveled in game.rs, unused methods normalize() and dot() in physics.rs",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T22:48:48.322754570Z",
-      "updated_at": "2026-02-28T22:48:51.124343538Z"
+      "updated_at": "2026-02-28T22:54:00.700980677Z"
     },
     "lb-sllx": {
       "id": "lb-sllx",
