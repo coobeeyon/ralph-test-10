@@ -131,6 +131,11 @@
       "from_id": "lb-5kyj",
       "to_id": "lb-6ef4",
       "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-dmbs",
+      "to_id": "lb-vjw8",
+      "dep_type": "blocks"
     }
   ]
 }
