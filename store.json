@@ -193,6 +193,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-l3v2",
+      "to_id": "lb-6ef4",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-oha0",
       "to_id": "lb-6ef4",
       "dep_type": "parent"
@@ -236,11 +241,6 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
-    },
-    {
-      "from_id": "lb-l3v2",
-      "to_id": "lb-6ef4",
-      "dep_type": "parent"
     }
   ]
 }
