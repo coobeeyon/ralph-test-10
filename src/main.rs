@@ -5,12 +5,13 @@ mod physics;
 mod render;
 
 use ai::Genome;
-use evolution::Population;
+use evolution::{GenerationStats, Population};
 use game::{Match, DEFAULT_MAX_TICKS, TICK_DT};
 use macroquad::prelude::*;
 use ::rand::Rng;
 use ::rand::SeedableRng;
 use ::rand::rngs::StdRng;
+use std::sync::mpsc;
 
 fn window_conf() -> Conf {
     Conf {
@@ -22,67 +23,80 @@ fn window_conf() -> Conf {
     }
 }
 
+/// Update sent from evolution thread after each generation completes
+struct EvolutionUpdate {
+    stats: GenerationStats,
+    /// Top genomes from the completed generation (elites after evolution)
+    top_genomes: Vec<Genome>,
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut rng = StdRng::from_entropy();
-    let mut population = Population::new(&mut rng);
-    let mut stats_history: Vec<evolution::GenerationStats> = Vec::new();
     let max_generations: u32 = 100;
+    let mut rng = StdRng::from_entropy();
 
-    // Showcase match state
+    // Channel for receiving evolution updates from background thread
+    let (tx, rx) = mpsc::channel::<EvolutionUpdate>();
+
+    // Spawn evolution in background thread so UI stays responsive
+    std::thread::spawn(move || {
+        let mut evo_rng = StdRng::from_entropy();
+        let mut population = Population::new(&mut evo_rng);
+
+        for _gen in 0..max_generations {
+            let stats = population.run_generation(&mut evo_rng);
+            println!("{}", stats);
+
+            // After run_generation, individuals[0..elite_count] are the elites
+            let top_n = 10.min(population.individuals.len());
+            let top_genomes: Vec<Genome> = population.individuals[..top_n]
+                .iter()
+                .map(|ind| ind.genome.clone())
+                .collect();
+
+            if tx.send(EvolutionUpdate { stats, top_genomes }).is_err() {
+                return; // Main thread exited
+            }
+        }
+    });
+
+    // Main thread state
+    let mut stats_history: Vec<GenerationStats> = Vec::new();
+    let mut top_genomes: Vec<Genome> = vec![Genome::random(&mut rng), Genome::random(&mut rng)];
     let mut showcase_match: Option<Match> = None;
-    let mut showcase_genomes: [Genome; 2] = [
-        population.individuals[0].genome.clone(),
-        population.individuals[1].genome.clone(),
-    ];
+    let mut showcase_genomes: [Genome; 2] =
+        [top_genomes[0].clone(), top_genomes[1].clone()];
     let mut result_pause: u32 = 0;
     let mut show_stats = false;
-
-    // Show splash screen while first generation runs
-    clear_background(BLACK);
-    draw_text("Spaceship Duel Evolution", 200.0, 380.0, 30.0, WHITE);
-    draw_text("Starting evolution...", 280.0, 420.0, 20.0, GRAY);
-    next_frame().await;
+    let mut evolution_complete = false;
 
     loop {
         let sw = screen_width();
         let sh = screen_height();
+
+        // Poll for evolution updates (non-blocking)
+        while let Ok(update) = rx.try_recv() {
+            stats_history.push(update.stats);
+            top_genomes = update.top_genomes;
+            evolution_complete = stats_history.len() as u32 >= max_generations;
+        }
 
         // Toggle stats view
         if is_key_pressed(KeyCode::Tab) {
             show_stats = !show_stats;
         }
 
-        // If no active showcase, run next generation and start one
+        // Start a new showcase match if needed
         if showcase_match.is_none() {
-            // Run next generation if evolution is still in progress
-            if population.generation < max_generations {
-                let stats = population.run_generation(&mut rng);
-                println!("{}", stats);
-                stats_history.push(stats);
-            }
-
-            // Pick genomes for showcase match
-            if population.generation >= max_generations {
-                // Post-evolution: random pair from top 10 for variety
-                let top_n = 10.min(population.individuals.len());
-                let i = rng.gen_range(0..top_n);
-                let mut j = rng.gen_range(0..top_n - 1);
+            let n = top_genomes.len();
+            if n >= 2 {
+                let i = rng.gen_range(0..n);
+                let mut j = rng.gen_range(0..n - 1);
                 if j >= i {
                     j += 1;
                 }
-                showcase_genomes = [
-                    population.individuals[i].genome.clone(),
-                    population.individuals[j].genome.clone(),
-                ];
-            } else {
-                // During evolution: top 2 elites from the generation just completed
-                showcase_genomes = [
-                    population.individuals[0].genome.clone(),
-                    population.individuals[1].genome.clone(),
-                ];
+                showcase_genomes = [top_genomes[i].clone(), top_genomes[j].clone()];
             }
-
             showcase_match = Some(Match::new(DEFAULT_MAX_TICKS));
             result_pause = 0;
         }
@@ -106,9 +120,8 @@ async fn main() {
                 draw_text("Spaceship Duel Evolution", 200.0, 40.0, 30.0, WHITE);
 
                 if let Some(stats) = stats_history.last() {
-                    let is_complete = population.generation >= max_generations;
-                    let status = if is_complete { "COMPLETE" } else { "Evolving" };
-                    let status_color = if is_complete { GREEN } else { YELLOW };
+                    let status = if evolution_complete { "COMPLETE" } else { "Evolving" };
+                    let status_color = if evolution_complete { GREEN } else { YELLOW };
 
                     draw_text(
                         &format!("Status: {}", status),
@@ -130,6 +143,8 @@ async fn main() {
                         &format!("Wins: {} / {} matches", stats.total_wins, stats.total_matches),
                         50.0, 200.0, 20.0, YELLOW,
                     );
+                } else {
+                    draw_text("Evolving generation 1...", 50.0, 80.0, 20.0, YELLOW);
                 }
 
                 draw_fitness_graph(&stats_history, sw, sh);
@@ -145,11 +160,15 @@ async fn main() {
                 let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
                 render::draw_hud(gen, best_fit, game);
 
-                let is_complete = population.generation >= max_generations;
-                if is_complete {
+                if evolution_complete {
                     draw_text(
                         "Evolution Complete  TAB: stats  SPACE: next match",
                         10.0, sh - 10.0, 16.0, GREEN,
+                    );
+                } else if stats_history.is_empty() {
+                    draw_text(
+                        "Evolving generation 1...  TAB: stats",
+                        10.0, sh - 10.0, 16.0, YELLOW,
                     );
                 } else {
                     draw_text(
@@ -170,7 +189,7 @@ async fn main() {
 }
 
 /// Draw a fitness graph showing best and average fitness over generations
-fn draw_fitness_graph(history: &[evolution::GenerationStats], screen_w: f32, screen_h: f32) {
+fn draw_fitness_graph(history: &[GenerationStats], screen_w: f32, screen_h: f32) {
     if history.is_empty() {
         return;
     }
