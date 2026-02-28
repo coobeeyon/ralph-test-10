@@ -55,11 +55,10 @@
       "title": "Evolutionary system: fitness, selection, crossover, mutation",
       "description": "Implement genetic algorithm: fitness evaluation from match results, tournament selection, crossover, mutation. Run many matches per generation. Evolution should produce increasingly competent fighters.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.493886084Z",
-      "updated_at": "2026-02-28T22:10:39.733796089Z"
+      "updated_at": "2026-02-28T22:18:08.763920544Z"
     },
     "lb-sllx": {
       "id": "lb-sllx",
