@@ -1,4 +1,5 @@
 use crate::ai::{Genome, GENOME_SIZE};
+use crate::game::{self, MatchResult, DEFAULT_MAX_TICKS};
 use rand::Rng;
 
 /// Population size for each generation
@@ -133,6 +134,102 @@ impl Population {
         self.individuals = next_gen;
         self.generation += 1;
     }
+
+    /// Run all matches for the current generation and update fitness scores.
+    ///
+    /// Each individual plays MATCHES_PER_INDIVIDUAL matches against randomly
+    /// selected opponents. Fitness is accumulated from match results.
+    pub fn evaluate_generation(&mut self, rng: &mut impl Rng) {
+        // Reset fitness for all individuals
+        for ind in self.individuals.iter_mut() {
+            ind.fitness = 0.0;
+            ind.wins = 0;
+            ind.matches_played = 0;
+        }
+
+        let n = self.individuals.len();
+
+        for i in 0..n {
+            for _ in 0..MATCHES_PER_INDIVIDUAL {
+                // Pick a random opponent (not self)
+                let mut j = rng.gen_range(0..n - 1);
+                if j >= i {
+                    j += 1;
+                }
+
+                let result = game::run_match(
+                    &self.individuals[i].genome,
+                    &self.individuals[j].genome,
+                );
+
+                // Score both participants
+                let (score_i, score_j) = compute_fitness_pair(&result);
+
+                self.individuals[i].fitness += score_i;
+                self.individuals[i].matches_played += 1;
+                if result.winner == Some(0) {
+                    self.individuals[i].wins += 1;
+                }
+
+                self.individuals[j].fitness += score_j;
+                self.individuals[j].matches_played += 1;
+                if result.winner == Some(1) {
+                    self.individuals[j].wins += 1;
+                }
+            }
+        }
+
+        // Normalize fitness by matches played
+        for ind in self.individuals.iter_mut() {
+            if ind.matches_played > 0 {
+                ind.fitness /= ind.matches_played as f32;
+            }
+        }
+    }
+}
+
+/// Compute fitness scores for both participants from a match result.
+///
+/// Returns (score_for_ship_0, score_for_ship_1).
+///
+/// Scoring:
+/// - Win: +10 points
+/// - Kill speed bonus: up to +5 points for faster kills
+/// - Accuracy bonus: up to +3 points for hit rate
+/// - Aggression bonus: +1 point for firing at least once
+/// - Survival on timeout: +2 points if alive at timeout (no winner)
+pub fn compute_fitness_pair(result: &MatchResult) -> (f32, f32) {
+    let mut scores = [0.0f32; 2];
+
+    for i in 0..2 {
+        // Win bonus
+        if result.winner == Some(i) {
+            scores[i] += 10.0;
+
+            // Kill speed bonus: faster kills get more points
+            // Max bonus at tick 1, zero bonus at max ticks
+            let speed_ratio = 1.0 - (result.ticks as f32 / DEFAULT_MAX_TICKS as f32);
+            scores[i] += 5.0 * speed_ratio;
+        }
+
+        // Accuracy bonus: hits / shots_fired
+        if result.shots_fired[i] > 0 {
+            let accuracy = result.hits[i] as f32 / result.shots_fired[i] as f32;
+            scores[i] += 3.0 * accuracy;
+        }
+
+        // Aggression bonus: reward firing at all
+        if result.shots_fired[i] > 0 {
+            scores[i] += 1.0;
+        }
+
+        // Survival bonus on timeout (draw)
+        if result.winner.is_none() && result.ticks >= DEFAULT_MAX_TICKS {
+            scores[i] += 2.0;
+        }
+    }
+
+    (scores[0], scores[1])
 }
 
 #[cfg(test)]
@@ -389,5 +486,143 @@ mod tests {
             pop.best_fitness_history[0],
             (POPULATION_SIZE - 1) as f32
         );
+    }
+
+    // --- Fitness scoring ---
+
+    #[test]
+    fn fitness_win_scores_higher_than_loss() {
+        let result = MatchResult {
+            winner: Some(0),
+            ticks: 900,
+            hits: [1, 0],
+            distance_traveled: [100.0, 50.0],
+            shots_fired: [4, 3],
+        };
+
+        let (s0, s1) = compute_fitness_pair(&result);
+        assert!(s0 > s1, "Winner should score higher: {} vs {}", s0, s1);
+    }
+
+    #[test]
+    fn fitness_faster_kill_scores_higher() {
+        let fast = MatchResult {
+            winner: Some(0),
+            ticks: 100,
+            hits: [1, 0],
+            distance_traveled: [50.0, 20.0],
+            shots_fired: [1, 0],
+        };
+        let slow = MatchResult {
+            winner: Some(0),
+            ticks: 1500,
+            hits: [1, 0],
+            distance_traveled: [200.0, 100.0],
+            shots_fired: [1, 0],
+        };
+
+        let (fast_score, _) = compute_fitness_pair(&fast);
+        let (slow_score, _) = compute_fitness_pair(&slow);
+        assert!(fast_score > slow_score, "Faster kill should score higher: {} vs {}", fast_score, slow_score);
+    }
+
+    #[test]
+    fn fitness_timeout_gives_survival_bonus() {
+        let timeout = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            distance_traveled: [100.0, 100.0],
+            shots_fired: [0, 0],
+        };
+
+        let (s0, s1) = compute_fitness_pair(&timeout);
+        // Both ships survive, both get survival bonus
+        assert!(s0 > 0.0);
+        assert_eq!(s0, s1);
+    }
+
+    #[test]
+    fn fitness_accuracy_rewarded() {
+        let accurate = MatchResult {
+            winner: Some(0),
+            ticks: 500,
+            hits: [1, 0],
+            distance_traveled: [100.0, 50.0],
+            shots_fired: [1, 5], // ship 0: perfect accuracy, ship 1: 0% accuracy
+        };
+
+        let (s0, s1) = compute_fitness_pair(&accurate);
+        // Ship 0 has accuracy bonus (3.0 * 1.0) + win + aggression
+        // Ship 1 has aggression only
+        assert!(s0 > s1);
+    }
+
+    #[test]
+    fn fitness_aggression_rewarded() {
+        let passive = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            distance_traveled: [100.0, 100.0],
+            shots_fired: [0, 0],
+        };
+        let active = MatchResult {
+            winner: None,
+            ticks: DEFAULT_MAX_TICKS,
+            hits: [0, 0],
+            distance_traveled: [100.0, 100.0],
+            shots_fired: [5, 0],
+        };
+
+        let (passive_s0, _) = compute_fitness_pair(&passive);
+        let (active_s0, _) = compute_fitness_pair(&active);
+        assert!(active_s0 > passive_s0, "Shooting should be rewarded");
+    }
+
+    #[test]
+    fn fitness_no_negative_scores() {
+        let result = MatchResult {
+            winner: Some(1),
+            ticks: 100,
+            hits: [0, 1],
+            distance_traveled: [10.0, 10.0],
+            shots_fired: [0, 1],
+        };
+
+        let (s0, s1) = compute_fitness_pair(&result);
+        assert!(s0 >= 0.0, "Fitness should never be negative");
+        assert!(s1 >= 0.0, "Fitness should never be negative");
+    }
+
+    // --- Evaluate generation ---
+
+    #[test]
+    fn evaluate_generation_updates_fitness() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        pop.evaluate_generation(&mut rng);
+
+        // All individuals should have played matches
+        for ind in &pop.individuals {
+            assert!(ind.matches_played > 0, "All individuals should play matches");
+        }
+
+        // At least some should have non-zero fitness
+        let has_fitness = pop.individuals.iter().any(|ind| ind.fitness > 0.0);
+        assert!(has_fitness, "Some individuals should have positive fitness");
+    }
+
+    #[test]
+    fn evaluate_generation_tracks_wins() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        pop.evaluate_generation(&mut rng);
+
+        // Total wins should be reasonable (some matches end in draws)
+        let total_wins: u32 = pop.individuals.iter().map(|i| i.wins).sum();
+        assert!(total_wins > 0, "Some matches should have winners");
     }
 }

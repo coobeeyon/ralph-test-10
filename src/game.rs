@@ -1,7 +1,14 @@
+use crate::ai::Genome;
 use crate::physics::{
     self, Vec2, BULLETS_PER_ROUND, BULLET_MAX_RANGE, BULLET_SPEED, DRAG, ROTATION_SPEED,
     SHIP_RADIUS, THRUST_ACCEL,
 };
+
+/// Fixed simulation timestep (60 ticks per second)
+pub const TICK_DT: f32 = 1.0 / 60.0;
+
+/// Default match duration in ticks (30 seconds at 60 tps = 1800 ticks)
+pub const DEFAULT_MAX_TICKS: u32 = 1800;
 
 /// Actions a ship AI can take each tick
 #[derive(Clone, Copy, Debug, Default)]
@@ -203,6 +210,26 @@ impl Match {
             });
         }
     }
+}
+
+/// Run a complete match between two genomes, returning the result.
+///
+/// Each tick, both genomes observe the game state and produce actions,
+/// which are applied to advance the simulation. The match runs until
+/// a ship is destroyed or the time limit is reached.
+pub fn run_match(genome_a: &Genome, genome_b: &Genome) -> MatchResult {
+    let mut game = Match::new(DEFAULT_MAX_TICKS);
+    let genomes = [genome_a, genome_b];
+
+    while game.is_running() {
+        let actions = [
+            genomes[0].decide(&game, 0),
+            genomes[1].decide(&game, 1),
+        ];
+        game.step(actions, TICK_DT);
+    }
+
+    game.result.unwrap()
 }
 
 #[cfg(test)]
@@ -756,5 +783,63 @@ mod tests {
 
         assert!(!m.is_running());
         assert_eq!(m.tick, 5); // should not have incremented past 5
+    }
+
+    // --- run_match ---
+
+    #[test]
+    fn run_match_completes() {
+        use crate::ai::Genome;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let mut rng = StdRng::seed_from_u64(42);
+        let g1 = Genome::random(&mut rng);
+        let g2 = Genome::random(&mut rng);
+
+        let result = super::run_match(&g1, &g2);
+        assert!(result.ticks > 0);
+        assert!(result.ticks <= DEFAULT_MAX_TICKS);
+    }
+
+    #[test]
+    fn run_match_returns_valid_result() {
+        use crate::ai::Genome;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let mut rng = StdRng::seed_from_u64(99);
+        let g1 = Genome::random(&mut rng);
+        let g2 = Genome::random(&mut rng);
+
+        let result = super::run_match(&g1, &g2);
+
+        // Winner must be None, Some(0), or Some(1)
+        match result.winner {
+            None | Some(0) | Some(1) => {}
+            _ => panic!("Invalid winner: {:?}", result.winner),
+        }
+
+        // Shots fired should not exceed bullet limit
+        assert!(result.shots_fired[0] <= crate::physics::BULLETS_PER_ROUND as u32);
+        assert!(result.shots_fired[1] <= crate::physics::BULLETS_PER_ROUND as u32);
+    }
+
+    #[test]
+    fn run_match_identical_genomes_deterministic() {
+        use crate::ai::Genome;
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let mut rng = StdRng::seed_from_u64(77);
+        let g1 = Genome::random(&mut rng);
+        let g2 = g1.clone();
+
+        let r1 = super::run_match(&g1, &g2);
+        let r2 = super::run_match(&g1, &g2);
+
+        // Same genomes, same starting conditions → deterministic result
+        assert_eq!(r1.ticks, r2.ticks);
+        assert_eq!(r1.winner, r2.winner);
     }
 }
