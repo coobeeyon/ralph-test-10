@@ -75,11 +75,10 @@
       "title": "Projectile system: bullets, collision detection, bullet limits",
       "description": "Implement bullet firing, bullet travel (max 200px range), collision detection between bullets and ships, 8 bullets per round limit per ship.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.476821602Z",
-      "updated_at": "2026-02-28T22:01:41.164450780Z"
+      "updated_at": "2026-02-28T22:03:55.876404603Z"
     },
     "lb-zww1": {
       "id": "lb-zww1",
