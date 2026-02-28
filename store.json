@@ -80,6 +80,16 @@
       "created_at": "2026-02-28T21:44:14.500031596Z",
       "updated_at": "2026-02-28T22:29:33.751891315Z"
     },
+    "lb-uv18": {
+      "id": "lb-uv18",
+      "title": "Enhance fitness function with proximity and engagement tracking",
+      "description": "Add proximity tracking to matches (closest approach, avg distance) and enhance fitness function to reward closing distance and facing the enemy. Currently there is no gradient signal for approach behavior, limiting evolution quality.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 1,
+      "created_at": "2026-02-28T23:18:43.295933112Z",
+      "updated_at": "2026-02-28T23:18:43.295933112Z"
+    },
     "lb-vjw8": {
       "id": "lb-vjw8",
       "title": "Projectile system: bullets, collision detection, bullet limits",
@@ -211,6 +221,11 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-uv18",
+      "to_id": "lb-6ef4",
+      "dep_type": "parent"
     }
   ]
 }
