@@ -65,11 +65,10 @@
       "title": "Visualization: Asteroids-style rendering with real-time match viewing",
       "description": "Render matches in real-time with Asteroids aesthetic (line graphics on dark background). Show ships as triangles, bullets as dots, arena boundaries. User can watch state-of-the-art evolved players competing.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-02-28T21:44:14.500031596Z",
-      "updated_at": "2026-02-28T22:19:21.359914153Z"
+      "updated_at": "2026-02-28T22:29:33.751891315Z"
     },
     "lb-vjw8": {
       "id": "lb-vjw8",
