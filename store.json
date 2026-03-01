@@ -243,6 +243,11 @@
   },
   "deps": [
     {
+      "from_id": "lb-2x4h",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-5kyj",
       "to_id": "lb-6ef4",
       "dep_type": "parent"
@@ -256,6 +261,11 @@
       "from_id": "lb-8v89",
       "to_id": "lb-kpm6",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-9s3d",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
     },
     {
       "from_id": "lb-a1ly",
@@ -313,7 +323,17 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-l5hb",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-ldz3",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-noff",
       "to_id": "lb-olru",
       "dep_type": "parent"
     },
@@ -381,26 +401,6 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
-    },
-    {
-      "from_id": "lb-2x4h",
-      "to_id": "lb-olru",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-l5hb",
-      "to_id": "lb-olru",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-noff",
-      "to_id": "lb-olru",
-      "dep_type": "parent"
-    },
-    {
-      "from_id": "lb-9s3d",
-      "to_id": "lb-olru",
-      "dep_type": "parent"
     }
   ]
 }
