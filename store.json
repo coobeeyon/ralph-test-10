@@ -170,6 +170,16 @@
       "created_at": "2026-02-28T23:02:15.251589284Z",
       "updated_at": "2026-02-28T23:10:03.158949151Z"
     },
+    "lb-xtqd": {
+      "id": "lb-xtqd",
+      "title": "Save and load evolution checkpoint to disk",
+      "description": "Save the best genomes and population state to a JSON file periodically so evolution progress isn't lost on restart. Auto-save every N generations, and auto-load on startup if a checkpoint file exists.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-01T00:39:40.728004882Z",
+      "updated_at": "2026-03-01T00:39:40.728004882Z"
+    },
     "lb-yhfw": {
       "id": "lb-yhfw",
       "title": "Add simulation speed controls for showcase matches",
@@ -326,6 +336,11 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-xtqd",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
     }
   ]
 }
