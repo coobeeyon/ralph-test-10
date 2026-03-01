@@ -1,5 +1,15 @@
 {
   "items": {
+    "lb-2x4h": {
+      "id": "lb-2x4h",
+      "title": "Add adaptive mutation rate scheduling",
+      "description": "Mutation rate starts high (10%) for exploration and decays to 2% over generations for fine-tuning. Also add adaptive mutation strength (sigma) that decreases over time.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-01T00:48:06.173831333Z",
+      "updated_at": "2026-03-01T00:48:06.173831333Z"
+    },
     "lb-5kyj": {
       "id": "lb-5kyj",
       "title": "Integration: connect evolution pipeline with visualization",
@@ -341,6 +351,11 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
+    },
+    {
+      "from_id": "lb-2x4h",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
     }
   ]
 }
