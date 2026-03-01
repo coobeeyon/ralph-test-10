@@ -90,6 +90,16 @@
       "created_at": "2026-02-28T23:39:24.761292596Z",
       "updated_at": "2026-02-28T23:42:45.271972951Z"
     },
+    "lb-l5hb": {
+      "id": "lb-l5hb",
+      "title": "Add second hidden layer to neural network",
+      "description": "Increase NN depth from 1 to 2 hidden layers (16→8 neurons) for more complex behavior patterns. Update genome encoding, crossover, and mutation to handle the larger network.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 2,
+      "created_at": "2026-03-01T00:48:06.918680199Z",
+      "updated_at": "2026-03-01T00:48:06.918680199Z"
+    },
     "lb-ldz3": {
       "id": "lb-ldz3",
       "title": "Add diversity preservation mechanism to evolution",
@@ -354,6 +364,11 @@
     },
     {
       "from_id": "lb-2x4h",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-l5hb",
       "to_id": "lb-olru",
       "dep_type": "parent"
     }
