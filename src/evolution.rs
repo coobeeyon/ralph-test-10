@@ -13,11 +13,21 @@ pub const POPULATION_SIZE: usize = 100;
 /// Number of matches each individual plays per generation
 pub const MATCHES_PER_INDIVIDUAL: usize = 10;
 
-/// Mutation rate (probability of mutating each weight)
-pub const MUTATION_RATE: f32 = 0.05;
+/// Initial mutation rate (probability of mutating each weight) — high for exploration
+pub const MUTATION_RATE_INITIAL: f32 = 0.10;
 
-/// Mutation strength (standard deviation of gaussian mutation)
-pub const MUTATION_STRENGTH: f32 = 0.3;
+/// Final mutation rate — low for fine-tuning established strategies
+pub const MUTATION_RATE_FINAL: f32 = 0.02;
+
+/// Initial mutation strength (standard deviation of gaussian mutation) — large early steps
+pub const MUTATION_STRENGTH_INITIAL: f32 = 0.5;
+
+/// Final mutation strength — small refinements once strategies converge
+pub const MUTATION_STRENGTH_FINAL: f32 = 0.1;
+
+/// Decay time constant (in generations) for exponential scheduling.
+/// At tau generations, ~63% of the decay has occurred.
+pub const MUTATION_DECAY_TAU: f32 = 150.0;
 
 /// Fraction of top performers that survive to next generation
 pub const ELITE_FRACTION: f32 = 0.1;
@@ -63,6 +73,24 @@ impl Checkpoint {
     }
 }
 
+/// Compute the adaptive mutation rate for a given generation.
+///
+/// Decays exponentially from MUTATION_RATE_INITIAL to MUTATION_RATE_FINAL.
+pub fn adaptive_mutation_rate(generation: u32) -> f32 {
+    MUTATION_RATE_FINAL
+        + (MUTATION_RATE_INITIAL - MUTATION_RATE_FINAL)
+            * (-(generation as f32) / MUTATION_DECAY_TAU).exp()
+}
+
+/// Compute the adaptive mutation strength for a given generation.
+///
+/// Decays exponentially from MUTATION_STRENGTH_INITIAL to MUTATION_STRENGTH_FINAL.
+pub fn adaptive_mutation_strength(generation: u32) -> f32 {
+    MUTATION_STRENGTH_FINAL
+        + (MUTATION_STRENGTH_INITIAL - MUTATION_STRENGTH_FINAL)
+            * (-(generation as f32) / MUTATION_DECAY_TAU).exp()
+}
+
 /// Statistics for a single generation
 #[derive(Clone, Debug)]
 pub struct GenerationStats {
@@ -74,18 +102,24 @@ pub struct GenerationStats {
     pub total_matches: u32,
     /// Average pairwise genome distance (diversity metric)
     pub avg_diversity: f32,
+    /// Mutation rate used for this generation
+    pub mutation_rate: f32,
+    /// Mutation strength used for this generation
+    pub mutation_strength: f32,
 }
 
 impl fmt::Display for GenerationStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Div: {:>5.2} | Wins: {}/{}",
+            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Div: {:>5.2} | Mut: {:.1}%/{:.2} | Wins: {}/{}",
             self.generation,
             self.best_fitness,
             self.avg_fitness,
             self.worst_fitness,
             self.avg_diversity,
+            self.mutation_rate * 100.0,
+            self.mutation_strength,
             self.total_wins,
             self.total_matches,
         )
@@ -182,6 +216,8 @@ impl Population {
             total_wins,
             total_matches,
             avg_diversity,
+            mutation_rate: adaptive_mutation_rate(self.generation),
+            mutation_strength: adaptive_mutation_strength(self.generation),
         }
     }
 
@@ -238,17 +274,21 @@ impl Population {
         Genome { weights }
     }
 
-    /// Mutate a genome in place
-    pub fn mutate(genome: &mut Genome, rng: &mut impl Rng) {
+    /// Mutate a genome in place using the given mutation rate and strength.
+    pub fn mutate(genome: &mut Genome, rate: f32, strength: f32, rng: &mut impl Rng) {
         for w in genome.weights.iter_mut() {
-            if rng.gen::<f32>() < MUTATION_RATE {
-                *w += rng.gen_range(-MUTATION_STRENGTH..MUTATION_STRENGTH);
+            if rng.gen::<f32>() < rate {
+                *w += rng.gen_range(-strength..strength);
                 *w = w.clamp(-5.0, 5.0);
             }
         }
     }
 
     /// Create the next generation using elitism, tournament selection, crossover, and mutation.
+    ///
+    /// Mutation rate and strength are computed adaptively based on the current
+    /// generation number: they start high for broad exploration and decay
+    /// exponentially toward lower values for fine-tuning.
     pub fn next_generation(&mut self, rng: &mut impl Rng) {
         // Sort by fitness (descending)
         self.individuals
@@ -257,6 +297,10 @@ impl Population {
         let elite_count = (POPULATION_SIZE as f32 * ELITE_FRACTION) as usize;
         let best_fitness = self.individuals[0].fitness;
         self.best_fitness_history.push(best_fitness);
+
+        // Compute adaptive mutation parameters for this generation
+        let rate = adaptive_mutation_rate(self.generation);
+        let strength = adaptive_mutation_strength(self.generation);
 
         let mut next_gen: Vec<Individual> = Vec::with_capacity(POPULATION_SIZE);
 
@@ -270,7 +314,7 @@ impl Population {
             let parent_a = self.tournament_select(rng).clone();
             let parent_b = self.tournament_select(rng).clone();
             let mut child = Population::crossover(&parent_a, &parent_b, rng);
-            Population::mutate(&mut child, rng);
+            Population::mutate(&mut child, rate, strength, rng);
             next_gen.push(Individual::new(child));
         }
 
@@ -550,7 +594,8 @@ mod tests {
             weights: vec![0.0; GENOME_SIZE],
         };
         let original = genome.weights.clone();
-        Population::mutate(&mut genome, &mut rng);
+        // Use initial (high) mutation rate for a clear signal
+        Population::mutate(&mut genome, MUTATION_RATE_INITIAL, MUTATION_STRENGTH_INITIAL, &mut rng);
 
         let changed = genome
             .weights
@@ -558,7 +603,7 @@ mod tests {
             .zip(&original)
             .filter(|(a, b)| a != b)
             .count();
-        // With 5% mutation rate on 259 weights, expect ~13 changes
+        // With 10% mutation rate on 275 weights, expect ~28 changes
         assert!(changed > 0, "Mutation should change some weights");
         assert!(
             changed < GENOME_SIZE,
@@ -574,11 +619,110 @@ mod tests {
         };
         // Mutate many times to push weights toward bounds
         for _ in 0..100 {
-            Population::mutate(&mut genome, &mut rng);
+            Population::mutate(&mut genome, MUTATION_RATE_INITIAL, MUTATION_STRENGTH_INITIAL, &mut rng);
         }
         for &w in &genome.weights {
             assert!(w >= -5.0 && w <= 5.0, "Weight {} out of bounds", w);
         }
+    }
+
+    // --- Adaptive mutation scheduling ---
+
+    #[test]
+    fn adaptive_rate_starts_at_initial() {
+        let rate = adaptive_mutation_rate(0);
+        assert!((rate - MUTATION_RATE_INITIAL).abs() < 1e-6);
+    }
+
+    #[test]
+    fn adaptive_rate_decays_over_generations() {
+        let rate_0 = adaptive_mutation_rate(0);
+        let rate_100 = adaptive_mutation_rate(100);
+        let rate_500 = adaptive_mutation_rate(500);
+        assert!(rate_0 > rate_100, "Rate should decay: gen0={} gen100={}", rate_0, rate_100);
+        assert!(rate_100 > rate_500, "Rate should continue decaying: gen100={} gen500={}", rate_100, rate_500);
+    }
+
+    #[test]
+    fn adaptive_rate_converges_to_final() {
+        let rate = adaptive_mutation_rate(10000);
+        assert!(
+            (rate - MUTATION_RATE_FINAL).abs() < 0.001,
+            "Rate should converge to final: got {}",
+            rate
+        );
+    }
+
+    #[test]
+    fn adaptive_strength_starts_at_initial() {
+        let strength = adaptive_mutation_strength(0);
+        assert!((strength - MUTATION_STRENGTH_INITIAL).abs() < 1e-6);
+    }
+
+    #[test]
+    fn adaptive_strength_decays_over_generations() {
+        let s0 = adaptive_mutation_strength(0);
+        let s100 = adaptive_mutation_strength(100);
+        let s500 = adaptive_mutation_strength(500);
+        assert!(s0 > s100, "Strength should decay: gen0={} gen100={}", s0, s100);
+        assert!(s100 > s500, "Strength should continue decaying: gen100={} gen500={}", s100, s500);
+    }
+
+    #[test]
+    fn adaptive_strength_converges_to_final() {
+        let strength = adaptive_mutation_strength(10000);
+        assert!(
+            (strength - MUTATION_STRENGTH_FINAL).abs() < 0.01,
+            "Strength should converge to final: got {}",
+            strength
+        );
+    }
+
+    #[test]
+    fn adaptive_rate_never_below_final() {
+        for gen in [0, 1, 10, 50, 100, 500, 1000, 5000] {
+            let rate = adaptive_mutation_rate(gen);
+            assert!(
+                rate >= MUTATION_RATE_FINAL - 1e-6,
+                "Rate at gen {} should be >= final: got {}",
+                gen,
+                rate
+            );
+        }
+    }
+
+    #[test]
+    fn adaptive_strength_never_below_final() {
+        for gen in [0, 1, 10, 50, 100, 500, 1000, 5000] {
+            let strength = adaptive_mutation_strength(gen);
+            assert!(
+                strength >= MUTATION_STRENGTH_FINAL - 1e-6,
+                "Strength at gen {} should be >= final: got {}",
+                gen,
+                strength
+            );
+        }
+    }
+
+    #[test]
+    fn mutate_with_zero_rate_changes_nothing() {
+        let mut rng = seeded_rng();
+        let mut genome = Genome {
+            weights: vec![1.0; GENOME_SIZE],
+        };
+        Population::mutate(&mut genome, 0.0, 0.5, &mut rng);
+        assert!(genome.weights.iter().all(|&w| w == 1.0), "Zero rate should leave weights unchanged");
+    }
+
+    #[test]
+    fn mutate_with_full_rate_changes_all() {
+        let mut rng = seeded_rng();
+        let mut genome = Genome {
+            weights: vec![0.0; GENOME_SIZE],
+        };
+        Population::mutate(&mut genome, 1.0, 0.5, &mut rng);
+        let changed = genome.weights.iter().filter(|&&w| w != 0.0).count();
+        assert_eq!(changed, GENOME_SIZE, "Rate 1.0 should change all weights");
     }
 
     // --- Next generation ---

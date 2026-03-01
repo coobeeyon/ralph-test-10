@@ -5,7 +5,9 @@ mod physics;
 mod render;
 
 use ai::Genome;
-use evolution::{Checkpoint, GenerationStats, Population, CHECKPOINT_INTERVAL, CHECKPOINT_PATH};
+use evolution::{
+    Checkpoint, GenerationStats, Population, CHECKPOINT_INTERVAL, CHECKPOINT_PATH,
+};
 use game::{Match, ShipActions, DEFAULT_MAX_TICKS, TICK_DT};
 use macroquad::prelude::*;
 use ::rand::Rng;
@@ -142,6 +144,8 @@ async fn main() {
                         total_wins: 0,
                         total_matches: 0,
                         avg_diversity: 0.0,
+                        mutation_rate: evolution::adaptive_mutation_rate(i as u32),
+                        mutation_strength: evolution::adaptive_mutation_strength(i as u32),
                     });
                 }
             }
@@ -247,8 +251,15 @@ async fn main() {
                         50.0, 200.0, 20.0, ORANGE,
                     );
                     draw_text(
+                        &format!(
+                            "Mutation:     {:.1}% rate, {:.2} strength",
+                            stats.mutation_rate * 100.0, stats.mutation_strength
+                        ),
+                        50.0, 230.0, 20.0, MAGENTA,
+                    );
+                    draw_text(
                         &format!("Wins: {} / {} matches", stats.total_wins, stats.total_matches),
-                        50.0, 230.0, 20.0, YELLOW,
+                        50.0, 260.0, 20.0, YELLOW,
                     );
                 } else {
                     draw_text("Evolving generation 1...", 50.0, 80.0, 20.0, YELLOW);
