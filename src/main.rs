@@ -70,6 +70,7 @@ async fn main() {
     let mut current_actions: [ShipActions; 2] = [ShipActions::default(); 2];
     let mut was_alive: [bool; 2] = [true, true];
     let mut explosions: Vec<render::Explosion> = Vec::new();
+    let mut showcase_scores: [u32; 3] = [0, 0, 0]; // [green_wins, blue_wins, draws]
 
     loop {
         let sw = screen_width();
@@ -183,6 +184,9 @@ async fn main() {
                 let gen = stats_history.last().map_or(0, |s| s.generation);
                 let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
                 render::draw_hud(gen, best_fit, game);
+                render::draw_score_tracker(
+                    showcase_scores[0], showcase_scores[1], showcase_scores[2],
+                );
 
                 if stats_history.is_empty() {
                     draw_text(
@@ -199,6 +203,16 @@ async fn main() {
 
             // Transition to next match: on skip or after result pause
             if is_key_pressed(KeyCode::Space) || result_pause >= 90 {
+                // Record score from completed match
+                if let Some(ref game_ref) = showcase_match {
+                    if let Some(ref result) = game_ref.result {
+                        match result.winner {
+                            Some(0) => showcase_scores[0] += 1,
+                            Some(1) => showcase_scores[1] += 1,
+                            _ => showcase_scores[2] += 1,
+                        }
+                    }
+                }
                 showcase_match = None;
             }
         }

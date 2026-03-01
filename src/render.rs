@@ -1,5 +1,5 @@
 use crate::game::{Bullet, Match, Ship, ShipActions};
-use crate::physics::{ARENA_HEIGHT, ARENA_WIDTH, SHIP_RADIUS, Vec2};
+use crate::physics::{ARENA_HEIGHT, ARENA_WIDTH, BULLET_MAX_RANGE, SHIP_RADIUS, Vec2};
 use macroquad::prelude::*;
 
 /// Colors for the Asteroids aesthetic
@@ -115,6 +115,83 @@ fn draw_wreckage(ship: &Ship, color: Color, screen_w: f32, screen_h: f32) {
     draw_line(sx - r, sy + r, sx + r, sy - r, 1.0, faded);
 }
 
+/// Draw a dashed aim line extending from a ship's nose in its facing direction
+fn draw_aim_line(ship: &Ship, color: Color, screen_w: f32, screen_h: f32) {
+    if !ship.alive {
+        return;
+    }
+
+    let (sx, sy) = arena_to_screen(ship.pos, screen_w, screen_h);
+    let scale = screen_w / ARENA_WIDTH;
+    let r = SHIP_RADIUS * scale;
+
+    let cos_a = ship.rotation.cos();
+    let sin_a = ship.rotation.sin();
+
+    // Start from the nose of the ship
+    let start_x = sx + r * cos_a;
+    let start_y = sy + r * sin_a;
+
+    // Extend to bullet max range
+    let range = BULLET_MAX_RANGE * scale;
+    let aim_color = Color::new(color.r, color.g, color.b, 0.2);
+
+    // Draw dashed line: 8px dash, 6px gap
+    let dash_len = 8.0;
+    let gap_len = 6.0;
+    let total = dash_len + gap_len;
+    let mut d = 0.0;
+    while d < range {
+        let seg_start = d;
+        let seg_end = (d + dash_len).min(range);
+        let x1 = start_x + cos_a * seg_start;
+        let y1 = start_y + sin_a * seg_start;
+        let x2 = start_x + cos_a * seg_end;
+        let y2 = start_y + sin_a * seg_end;
+        draw_line(x1, y1, x2, y2, 1.0, aim_color);
+        d += total;
+    }
+}
+
+/// Draw a velocity vector line showing ship momentum
+fn draw_velocity_vector(ship: &Ship, color: Color, screen_w: f32, screen_h: f32) {
+    if !ship.alive {
+        return;
+    }
+
+    let speed = ship.vel.length();
+    if speed < 5.0 {
+        return; // Skip if nearly stationary
+    }
+
+    let (sx, sy) = arena_to_screen(ship.pos, screen_w, screen_h);
+    let scale = screen_w / ARENA_WIDTH;
+
+    // Scale velocity for visibility (velocity line shows ~0.5s of travel)
+    let vel_scale = scale * 0.5;
+    let end_x = sx + ship.vel.x * vel_scale;
+    let end_y = sy + ship.vel.y * vel_scale;
+
+    let vel_color = Color::new(color.r, color.g, color.b, 0.35);
+    draw_line(sx, sy, end_x, end_y, 1.0, vel_color);
+
+    // Small arrowhead
+    let arrow_len = 4.0;
+    let vel_angle = ship.vel.y.atan2(ship.vel.x);
+    let a1 = vel_angle + 2.5;
+    let a2 = vel_angle - 2.5;
+    draw_line(
+        end_x, end_y,
+        end_x + a1.cos() * arrow_len, end_y + a1.sin() * arrow_len,
+        1.0, vel_color,
+    );
+    draw_line(
+        end_x, end_y,
+        end_x + a2.cos() * arrow_len, end_y + a2.sin() * arrow_len,
+        1.0, vel_color,
+    );
+}
+
 /// A single debris line from an explosion
 struct DebrisLine {
     pos: (f32, f32),
@@ -211,6 +288,17 @@ pub fn draw_match(
     // Draw arena border
     draw_rectangle_lines(0.0, 0.0, screen_w, screen_h, 1.0, DARKGRAY);
 
+    // Draw aim lines and velocity vectors (behind ships)
+    for (i, ship) in game.ships.iter().enumerate() {
+        draw_aim_line(ship, SHIP_COLORS[i], screen_w, screen_h);
+        draw_velocity_vector(ship, SHIP_COLORS[i], screen_w, screen_h);
+    }
+
+    // Draw distance line between ships when both alive
+    if game.ships[0].alive && game.ships[1].alive {
+        draw_distance_line(&game.ships[0], &game.ships[1], screen_w, screen_h);
+    }
+
     // Draw ships, thrust flames, and wreckage
     for (i, ship) in game.ships.iter().enumerate() {
         draw_ship(ship, SHIP_COLORS[i], screen_w, screen_h);
@@ -237,6 +325,51 @@ pub fn screen_scale(screen_w: f32) -> f32 {
 /// Get the ship color for a given ship index
 pub fn ship_color(index: usize) -> Color {
     SHIP_COLORS[index]
+}
+
+/// Draw a faint line between two ships with distance readout
+fn draw_distance_line(ship0: &Ship, ship1: &Ship, screen_w: f32, screen_h: f32) {
+    let (sx0, sy0) = arena_to_screen(ship0.pos, screen_w, screen_h);
+    let (sx1, sy1) = arena_to_screen(ship1.pos, screen_w, screen_h);
+
+    // Use toroidal distance for the label
+    let dist = crate::physics::toroidal_distance(ship0.pos, ship1.pos);
+
+    // Draw faint connecting line (direct screen path, not toroidal)
+    let line_color = Color::new(1.0, 1.0, 1.0, 0.08);
+    draw_line(sx0, sy0, sx1, sy1, 1.0, line_color);
+
+    // Distance label at midpoint
+    let mid_x = (sx0 + sx1) / 2.0;
+    let mid_y = (sy0 + sy1) / 2.0 - 10.0;
+    let dist_color = Color::new(1.0, 1.0, 1.0, 0.3);
+    draw_text(&format!("{:.0}px", dist), mid_x - 15.0, mid_y, 14.0, dist_color);
+}
+
+/// Draw showcase match score tracker
+pub fn draw_score_tracker(green_wins: u32, blue_wins: u32, draws: u32) {
+    let sw = screen_width();
+    let y = 58.0;
+
+    let score_text = format!(
+        "Score  {} - {} - {}",
+        green_wins, blue_wins, draws
+    );
+    let text_w = measure_text(&score_text, None, 16, 1.0).width;
+    let x = (sw - text_w) / 2.0;
+
+    // Draw the labels in their respective colors
+    draw_text("Score  ", x, y, 16.0, GRAY);
+    let offset = measure_text("Score  ", None, 16, 1.0).width;
+    draw_text(&format!("{}", green_wins), x + offset, y, 16.0, GREEN);
+    let offset2 = offset + measure_text(&format!("{}", green_wins), None, 16, 1.0).width;
+    draw_text(" - ", x + offset2, y, 16.0, GRAY);
+    let offset3 = offset2 + measure_text(" - ", None, 16, 1.0).width;
+    draw_text(&format!("{}", blue_wins), x + offset3, y, 16.0, SKYBLUE);
+    let offset4 = offset3 + measure_text(&format!("{}", blue_wins), None, 16, 1.0).width;
+    draw_text(" - ", x + offset4, y, 16.0, GRAY);
+    let offset5 = offset4 + measure_text(" - ", None, 16, 1.0).width;
+    draw_text(&format!("{}", draws), x + offset5, y, 16.0, YELLOW);
 }
 
 /// Draw the HUD overlay with generation and match info
