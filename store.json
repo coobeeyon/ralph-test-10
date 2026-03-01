@@ -115,11 +115,10 @@
       "title": "Add more visual feedback during showcase matches",
       "description": "Show aiming lines, score tracking, or hit indicators during visualization to help the user understand AI behavior as they watch matches.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 3,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:00:14.352990330Z",
-      "updated_at": "2026-03-01T00:23:25.469099292Z"
+      "updated_at": "2026-03-01T00:29:07.587796022Z"
     },
     "lb-sllx": {
       "id": "lb-sllx",
