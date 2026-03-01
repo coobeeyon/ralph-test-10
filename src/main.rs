@@ -32,7 +32,6 @@ struct EvolutionUpdate {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let max_generations: u32 = 100;
     let mut rng = StdRng::from_entropy();
 
     // Channel for receiving evolution updates from background thread
@@ -43,7 +42,7 @@ async fn main() {
         let mut evo_rng = StdRng::from_entropy();
         let mut population = Population::new(&mut evo_rng);
 
-        for _gen in 0..max_generations {
+        loop {
             let stats = population.run_generation(&mut evo_rng);
             println!("{}", stats);
 
@@ -68,7 +67,6 @@ async fn main() {
         [top_genomes[0].clone(), top_genomes[1].clone()];
     let mut result_pause: u32 = 0;
     let mut show_stats = false;
-    let mut evolution_complete = false;
     let mut current_actions: [ShipActions; 2] = [ShipActions::default(); 2];
     let mut was_alive: [bool; 2] = [true, true];
     let mut explosions: Vec<render::Explosion> = Vec::new();
@@ -81,7 +79,6 @@ async fn main() {
         while let Ok(update) = rx.try_recv() {
             stats_history.push(update.stats);
             top_genomes = update.top_genomes;
-            evolution_complete = stats_history.len() as u32 >= max_generations;
         }
 
         // Toggle stats view
@@ -143,15 +140,12 @@ async fn main() {
                 draw_text("Spaceship Duel Evolution", 200.0, 40.0, 30.0, WHITE);
 
                 if let Some(stats) = stats_history.last() {
-                    let status = if evolution_complete { "COMPLETE" } else { "Evolving" };
-                    let status_color = if evolution_complete { GREEN } else { YELLOW };
-
                     draw_text(
-                        &format!("Status: {}", status),
-                        50.0, 80.0, 20.0, status_color,
+                        "Status: Evolving",
+                        50.0, 80.0, 20.0, YELLOW,
                     );
                     draw_text(
-                        &format!("Generation: {} / {}", stats.generation + 1, max_generations),
+                        &format!("Generation: {}", stats.generation + 1),
                         50.0, 110.0, 20.0, WHITE,
                     );
                     draw_text(
@@ -186,12 +180,7 @@ async fn main() {
                 let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
                 render::draw_hud(gen, best_fit, game);
 
-                if evolution_complete {
-                    draw_text(
-                        "Evolution Complete  TAB: stats  SPACE: next match",
-                        10.0, sh - 10.0, 16.0, GREEN,
-                    );
-                } else if stats_history.is_empty() {
+                if stats_history.is_empty() {
                     draw_text(
                         "Evolving generation 1...  TAB: stats",
                         10.0, sh - 10.0, 16.0, YELLOW,
