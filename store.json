@@ -175,11 +175,10 @@
       "title": "Save and load evolution checkpoint to disk",
       "description": "Save the best genomes and population state to a JSON file periodically so evolution progress isn't lost on restart. Auto-save every N generations, and auto-load on startup if a checkpoint file exists.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:39:40.728004882Z",
-      "updated_at": "2026-03-01T00:39:43.407655016Z"
+      "updated_at": "2026-03-01T00:45:56.138066448Z"
     },
     "lb-yhfw": {
       "id": "lb-yhfw",
