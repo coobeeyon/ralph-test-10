@@ -135,11 +135,10 @@
       "title": "Remove 100-generation evolution cap — run evolution continuously",
       "description": "Evolution currently stops after 100 generations. The spec says evolution should produce increasingly competent fighters over time, implying continuous improvement. Remove the hard cap so evolution runs indefinitely while the program is open.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 1,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:00:11.989108365Z",
-      "updated_at": "2026-03-01T00:00:22.548080485Z"
+      "updated_at": "2026-03-01T00:03:35.213675892Z"
     },
     "lb-uv18": {
       "id": "lb-uv18",
