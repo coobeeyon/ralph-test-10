@@ -5,11 +5,10 @@
       "title": "Add adaptive mutation rate scheduling",
       "description": "Mutation rate starts high (10%) for exploration and decays to 2% over generations for fine-tuning. Also add adaptive mutation strength (sigma) that decreases over time.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:48:06.173831333Z",
-      "updated_at": "2026-03-01T00:48:11.925235620Z"
+      "updated_at": "2026-03-01T00:53:42.718525586Z"
     },
     "lb-5kyj": {
       "id": "lb-5kyj",
