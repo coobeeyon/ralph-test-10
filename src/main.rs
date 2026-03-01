@@ -4,7 +4,7 @@ mod game;
 mod physics;
 mod render;
 
-use ai::Genome;
+use ai::{Genome, NeuralState};
 use evolution::{
     Checkpoint, GenerationStats, Population, CHECKPOINT_INTERVAL, CHECKPOINT_PATH,
 };
@@ -120,7 +120,9 @@ async fn main() {
         [top_genomes[0].clone(), top_genomes[1].clone()];
     let mut result_pause: u32 = 0;
     let mut show_stats = false;
+    let mut show_nn = false;
     let mut current_actions: [ShipActions; 2] = [ShipActions::default(); 2];
+    let mut current_nn_states: Option<[NeuralState; 2]> = None;
     let mut was_alive: [bool; 2] = [true, true];
     let mut explosions: Vec<render::Explosion> = Vec::new();
     let mut showcase_scores: [u32; 3] = [0, 0, 0]; // [green_wins, blue_wins, draws]
@@ -157,6 +159,11 @@ async fn main() {
         // Toggle stats view
         if is_key_pressed(KeyCode::Tab) {
             show_stats = !show_stats;
+        }
+
+        // Toggle neural network overlay
+        if is_key_pressed(KeyCode::N) {
+            show_nn = !show_nn;
         }
 
         // Speed controls: Up/Down arrows cycle through speed multipliers
@@ -196,10 +203,18 @@ async fn main() {
                 if !game.is_running() {
                     break;
                 }
-                current_actions = [
-                    showcase_genomes[0].decide(game, 0),
-                    showcase_genomes[1].decide(game, 1),
-                ];
+                if show_nn {
+                    let (a0, s0) = showcase_genomes[0].decide_with_state(game, 0);
+                    let (a1, s1) = showcase_genomes[1].decide_with_state(game, 1);
+                    current_actions = [a0, a1];
+                    current_nn_states = Some([s0, s1]);
+                } else {
+                    current_actions = [
+                        showcase_genomes[0].decide(game, 0),
+                        showcase_genomes[1].decide(game, 1),
+                    ];
+                    current_nn_states = None;
+                }
                 game.step(current_actions, TICK_DT);
 
                 // Detect newly destroyed ships and spawn explosions
@@ -289,6 +304,10 @@ async fn main() {
                     showcase_scores[0], showcase_scores[1], showcase_scores[2],
                 );
 
+                if let Some(ref nn_states) = current_nn_states {
+                    render::draw_nn_overlay(nn_states, sw, sh);
+                }
+
                 if stats_history.is_empty() {
                     draw_text(
                         "Evolving generation 1...  TAB: stats",
@@ -296,7 +315,7 @@ async fn main() {
                     );
                 } else {
                     draw_text(
-                        "SPACE: skip  TAB: stats  UP/DOWN: speed",
+                        "SPACE: skip  TAB: stats  N: neural net  UP/DOWN: speed",
                         10.0, sh - 10.0, 16.0, GRAY,
                     );
                 }

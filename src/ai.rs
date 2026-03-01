@@ -32,6 +32,15 @@ pub const GENOME_SIZE: usize = (NUM_INPUTS * NUM_HIDDEN1)
     + (NUM_HIDDEN2 * NUM_OUTPUTS)
     + NUM_OUTPUTS;
 
+/// Captured state of all neuron activations during a forward pass
+#[derive(Clone, Debug)]
+pub struct NeuralState {
+    pub inputs: [f32; NUM_INPUTS],
+    pub hidden1: [f32; NUM_HIDDEN1],
+    pub hidden2: [f32; NUM_HIDDEN2],
+    pub outputs: [f32; NUM_OUTPUTS],
+}
+
 /// A genome encoding a ship's behavior as a simple feed-forward neural network
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Genome {
@@ -123,6 +132,78 @@ impl Genome {
             fire: output[2] > 0.0,              // boolean
         }
     }
+
+    /// Evaluate the neural network, returning both actions and full neural state
+    pub fn evaluate_with_state(&self, inputs: &[f32; NUM_INPUTS]) -> (ShipActions, NeuralState) {
+        let w = &self.weights;
+        let mut offset = 0;
+
+        // Input -> Hidden layer 1
+        let mut hidden1 = [0.0f32; NUM_HIDDEN1];
+        for h in 0..NUM_HIDDEN1 {
+            let mut sum = 0.0;
+            for i in 0..NUM_INPUTS {
+                sum += inputs[i] * w[offset];
+                offset += 1;
+            }
+            hidden1[h] = sum;
+        }
+        for h in 0..NUM_HIDDEN1 {
+            hidden1[h] += w[offset];
+            offset += 1;
+        }
+        for h in 0..NUM_HIDDEN1 {
+            hidden1[h] = hidden1[h].tanh();
+        }
+
+        // Hidden layer 1 -> Hidden layer 2
+        let mut hidden2 = [0.0f32; NUM_HIDDEN2];
+        for h2 in 0..NUM_HIDDEN2 {
+            let mut sum = 0.0;
+            for h1 in 0..NUM_HIDDEN1 {
+                sum += hidden1[h1] * w[offset];
+                offset += 1;
+            }
+            hidden2[h2] = sum;
+        }
+        for h2 in 0..NUM_HIDDEN2 {
+            hidden2[h2] += w[offset];
+            offset += 1;
+        }
+        for h2 in 0..NUM_HIDDEN2 {
+            hidden2[h2] = hidden2[h2].tanh();
+        }
+
+        // Hidden layer 2 -> Output layer
+        let mut output = [0.0f32; NUM_OUTPUTS];
+        for o in 0..NUM_OUTPUTS {
+            let mut sum = 0.0;
+            for h2 in 0..NUM_HIDDEN2 {
+                sum += hidden2[h2] * w[offset];
+                offset += 1;
+            }
+            output[o] = sum;
+        }
+        for o in 0..NUM_OUTPUTS {
+            output[o] += w[offset];
+            offset += 1;
+        }
+
+        let actions = ShipActions {
+            rotate: output[0].tanh(),
+            thrust: sigmoid(output[1]),
+            fire: output[2] > 0.0,
+        };
+
+        let state = NeuralState {
+            inputs: *inputs,
+            hidden1,
+            hidden2,
+            outputs: [output[0].tanh(), sigmoid(output[1]), if output[2] > 0.0 { 1.0 } else { 0.0 }],
+        };
+
+        (actions, state)
+    }
 }
 
 fn sigmoid(x: f32) -> f32 {
@@ -186,6 +267,12 @@ impl Genome {
     pub fn decide(&self, game: &Match, ship_idx: usize) -> ShipActions {
         let inputs = extract_inputs(game, ship_idx);
         self.evaluate(&inputs)
+    }
+
+    /// Decide ship actions and return the full neural state for visualization.
+    pub fn decide_with_state(&self, game: &Match, ship_idx: usize) -> (ShipActions, NeuralState) {
+        let inputs = extract_inputs(game, ship_idx);
+        self.evaluate_with_state(&inputs)
     }
 }
 

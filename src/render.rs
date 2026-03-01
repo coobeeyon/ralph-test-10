@@ -1,3 +1,4 @@
+use crate::ai::{NeuralState, NUM_HIDDEN1, NUM_HIDDEN2, NUM_INPUTS, NUM_OUTPUTS};
 use crate::game::{Bullet, Match, Ship, ShipActions};
 use crate::physics::{ARENA_HEIGHT, ARENA_WIDTH, BULLET_MAX_RANGE, SHIP_RADIUS, Vec2};
 use macroquad::prelude::*;
@@ -370,6 +371,149 @@ pub fn draw_score_tracker(green_wins: u32, blue_wins: u32, draws: u32) {
     draw_text(" - ", x + offset4, y, 16.0, GRAY);
     let offset5 = offset4 + measure_text(" - ", None, 16, 1.0).width;
     draw_text(&format!("{}", draws), x + offset5, y, 16.0, YELLOW);
+}
+
+/// Input labels for the neural network visualization
+const INPUT_LABELS: [&str; NUM_INPUTS] = [
+    "dx", "dy", "vx", "vy", "sin", "cos",
+    "evx", "evy", "esin", "ecos", "ammo", "bdst", "bang",
+];
+
+/// Output labels for the neural network visualization
+const OUTPUT_LABELS: [&str; NUM_OUTPUTS] = ["rot", "thr", "fire"];
+
+/// Map a value in [-1, 1] to a color from blue (negative) through dark (zero) to red/yellow (positive)
+fn activation_color(value: f32, base_color: Color) -> Color {
+    let v = value.clamp(-1.0, 1.0);
+    if v >= 0.0 {
+        // Positive: blend toward the ship's color
+        Color::new(
+            base_color.r * v,
+            base_color.g * v,
+            base_color.b * v,
+            0.7 + 0.3 * v,
+        )
+    } else {
+        // Negative: dim magenta
+        let nv = -v;
+        Color::new(0.6 * nv, 0.1 * nv, 0.4 * nv, 0.5 + 0.3 * nv)
+    }
+}
+
+/// Draw one ship's neural network panel
+fn draw_nn_panel(state: &NeuralState, x: f32, y: f32, w: f32, h: f32, ship_idx: usize) {
+    let color = SHIP_COLORS[ship_idx];
+    let label = if ship_idx == 0 { "Green NN" } else { "Blue NN" };
+
+    // Semi-transparent background
+    draw_rectangle(x, y, w, h, Color::new(0.0, 0.0, 0.0, 0.75));
+    draw_rectangle_lines(x, y, w, h, 1.0, Color::new(color.r, color.g, color.b, 0.5));
+
+    // Title
+    draw_text(label, x + 4.0, y + 14.0, 16.0, color);
+
+    let inner_x = x + 4.0;
+    let inner_w = w - 8.0;
+
+    // --- Inputs column ---
+    let col_inputs_x = inner_x;
+    let col_inputs_w = inner_w * 0.28;
+    let inputs_top = y + 22.0;
+    let row_h = (h - 30.0) / NUM_INPUTS as f32;
+
+    draw_text("IN", col_inputs_x, inputs_top, 10.0, GRAY);
+    for i in 0..NUM_INPUTS {
+        let ry = inputs_top + 4.0 + i as f32 * row_h;
+        let bar_w = state.inputs[i].abs().min(1.0) * (col_inputs_w - 28.0);
+        let bar_x = col_inputs_x + 26.0;
+        let c = activation_color(state.inputs[i], color);
+        draw_rectangle(bar_x, ry, bar_w, row_h - 1.0, c);
+        draw_text(INPUT_LABELS[i], col_inputs_x, ry + row_h - 2.0, 9.0, GRAY);
+    }
+
+    // --- Hidden1 column ---
+    let col_h1_x = col_inputs_x + col_inputs_w + 2.0;
+    let col_h1_w = inner_w * 0.25;
+    let h1_top = inputs_top;
+    let h1_row_h = (h - 30.0) / NUM_HIDDEN1 as f32;
+
+    draw_text("H1", col_h1_x, h1_top, 10.0, GRAY);
+    for i in 0..NUM_HIDDEN1 {
+        let ry = h1_top + 4.0 + i as f32 * h1_row_h;
+        let c = activation_color(state.hidden1[i], color);
+        let node_w = col_h1_w - 4.0;
+        draw_rectangle(col_h1_x, ry, node_w, h1_row_h - 1.0, c);
+    }
+
+    // --- Hidden2 column ---
+    let col_h2_x = col_h1_x + col_h1_w + 2.0;
+    let col_h2_w = inner_w * 0.18;
+    let h2_top = inputs_top;
+    let h2_row_h = (h - 30.0) / NUM_HIDDEN2 as f32;
+
+    draw_text("H2", col_h2_x, h2_top, 10.0, GRAY);
+    for i in 0..NUM_HIDDEN2 {
+        let ry = h2_top + 4.0 + i as f32 * h2_row_h;
+        let c = activation_color(state.hidden2[i], color);
+        let node_w = col_h2_w - 4.0;
+        draw_rectangle(col_h2_x, ry, node_w, h2_row_h - 1.0, c);
+    }
+
+    // --- Outputs column ---
+    let col_out_x = col_h2_x + col_h2_w + 2.0;
+    let out_top = inputs_top;
+    let out_row_h = (h - 30.0) / NUM_OUTPUTS as f32;
+
+    draw_text("OUT", col_out_x, out_top, 10.0, GRAY);
+    for i in 0..NUM_OUTPUTS {
+        let ry = out_top + 4.0 + i as f32 * out_row_h;
+        let c = activation_color(state.outputs[i], color);
+        let node_w = inner_w * 0.22;
+        draw_rectangle(col_out_x, ry, node_w, out_row_h - 1.0, c);
+        draw_text(
+            OUTPUT_LABELS[i],
+            col_out_x + 2.0,
+            ry + out_row_h * 0.5 + 3.0,
+            10.0,
+            WHITE,
+        );
+        // Value label
+        let val_text = format!("{:.2}", state.outputs[i]);
+        draw_text(
+            &val_text,
+            col_out_x + node_w - 26.0,
+            ry + out_row_h * 0.5 + 3.0,
+            10.0,
+            WHITE,
+        );
+    }
+}
+
+/// Draw the neural network activity overlay for both ships
+pub fn draw_nn_overlay(states: &[NeuralState; 2], screen_w: f32, screen_h: f32) {
+    let panel_w = (screen_w * 0.26).min(220.0);
+    let panel_h = (screen_h * 0.40).min(320.0);
+    let margin = 6.0;
+
+    // Green ship panel: bottom-left
+    draw_nn_panel(
+        &states[0],
+        margin,
+        screen_h - panel_h - 24.0,
+        panel_w,
+        panel_h,
+        0,
+    );
+
+    // Blue ship panel: bottom-right
+    draw_nn_panel(
+        &states[1],
+        screen_w - panel_w - margin,
+        screen_h - panel_h - 24.0,
+        panel_w,
+        panel_h,
+        1,
+    );
 }
 
 /// Draw the HUD overlay with generation and match info
