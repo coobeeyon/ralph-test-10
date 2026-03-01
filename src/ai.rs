@@ -1,6 +1,7 @@
 use crate::game::{Match, ShipActions};
 use crate::physics::{self, BULLETS_PER_ROUND};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::f32::consts::PI;
 
 /// Normalization scale for positions and velocities (half the arena width)
@@ -25,7 +26,7 @@ pub const GENOME_SIZE: usize =
     (NUM_INPUTS * NUM_HIDDEN) + NUM_HIDDEN + (NUM_HIDDEN * NUM_OUTPUTS) + NUM_OUTPUTS;
 
 /// A genome encoding a ship's behavior as a simple feed-forward neural network
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Genome {
     pub weights: Vec<f32>,
 }

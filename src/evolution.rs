@@ -2,7 +2,10 @@ use crate::ai::{Genome, GENOME_SIZE};
 use crate::game::{self, MatchResult, DEFAULT_MAX_TICKS};
 use rand::Rng;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fs;
+use std::path::Path;
 
 /// Population size for each generation
 pub const POPULATION_SIZE: usize = 100;
@@ -24,6 +27,41 @@ pub const TOURNAMENT_SIZE: usize = 5;
 
 /// Fitness sharing radius: genomes within this Euclidean distance share fitness
 pub const SHARING_RADIUS: f32 = 8.0;
+
+/// How often to auto-save checkpoints (every N generations)
+pub const CHECKPOINT_INTERVAL: u32 = 5;
+
+/// Default checkpoint file path
+pub const CHECKPOINT_PATH: &str = "evolution_checkpoint.json";
+
+/// Serializable checkpoint of the population state
+#[derive(Serialize, Deserialize)]
+pub struct Checkpoint {
+    pub generation: u32,
+    pub genomes: Vec<Genome>,
+    pub best_fitness_history: Vec<f32>,
+}
+
+impl Checkpoint {
+    /// Save checkpoint to a JSON file. Writes to a temp file first then renames
+    /// for atomicity, so a crash during save won't corrupt the checkpoint.
+    pub fn save(&self, path: &str) -> Result<(), String> {
+        let json = serde_json::to_string(self).map_err(|e| format!("serialize: {e}"))?;
+        let tmp = format!("{path}.tmp");
+        fs::write(&tmp, &json).map_err(|e| format!("write {tmp}: {e}"))?;
+        fs::rename(&tmp, path).map_err(|e| format!("rename to {path}: {e}"))?;
+        Ok(())
+    }
+
+    /// Load checkpoint from a JSON file, if it exists.
+    pub fn load(path: &str) -> Option<Checkpoint> {
+        if !Path::new(path).exists() {
+            return None;
+        }
+        let data = fs::read_to_string(path).ok()?;
+        serde_json::from_str(&data).ok()
+    }
+}
 
 /// Statistics for a single generation
 #[derive(Clone, Debug)]
@@ -92,6 +130,37 @@ impl Population {
             individuals,
             generation: 0,
             best_fitness_history: Vec::new(),
+        }
+    }
+
+    /// Restore population from a checkpoint. Any missing individuals (if checkpoint
+    /// has fewer genomes than POPULATION_SIZE) are filled with random genomes.
+    pub fn from_checkpoint(checkpoint: &Checkpoint, rng: &mut impl Rng) -> Self {
+        let mut individuals: Vec<Individual> = checkpoint
+            .genomes
+            .iter()
+            .take(POPULATION_SIZE)
+            .map(|g| Individual::new(g.clone()))
+            .collect();
+
+        // Fill remaining slots with random genomes if checkpoint is smaller
+        while individuals.len() < POPULATION_SIZE {
+            individuals.push(Individual::new(Genome::random(rng)));
+        }
+
+        Self {
+            individuals,
+            generation: checkpoint.generation,
+            best_fitness_history: checkpoint.best_fitness_history.clone(),
+        }
+    }
+
+    /// Create a checkpoint from the current population state.
+    pub fn to_checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            generation: self.generation,
+            genomes: self.individuals.iter().map(|i| i.genome.clone()).collect(),
+            best_fitness_history: self.best_fitness_history.clone(),
         }
     }
 
@@ -913,5 +982,54 @@ mod tests {
         let pop = Population::new(&mut rng);
         let stats = pop.generation_stats();
         assert!(stats.avg_diversity > 0.0, "Random population should have positive diversity");
+    }
+
+    // --- Checkpoint save/load ---
+
+    #[test]
+    fn checkpoint_roundtrip() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+        // Run a generation so we have fitness history
+        for (i, ind) in pop.individuals.iter_mut().enumerate() {
+            ind.fitness = i as f32;
+        }
+        pop.next_generation(&mut rng);
+
+        let checkpoint = pop.to_checkpoint();
+        let path = "/tmp/test_checkpoint_roundtrip.json";
+        checkpoint.save(path).expect("save should succeed");
+
+        let loaded = Checkpoint::load(path).expect("load should succeed");
+        assert_eq!(loaded.generation, pop.generation);
+        assert_eq!(loaded.genomes.len(), pop.individuals.len());
+        assert_eq!(loaded.best_fitness_history.len(), pop.best_fitness_history.len());
+
+        // Verify genome weights are preserved exactly
+        for (orig, loaded_g) in pop.individuals.iter().zip(&loaded.genomes) {
+            assert_eq!(orig.genome.weights, loaded_g.weights);
+        }
+
+        // Clean up
+        std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn checkpoint_load_nonexistent_returns_none() {
+        assert!(Checkpoint::load("/tmp/nonexistent_checkpoint_12345.json").is_none());
+    }
+
+    #[test]
+    fn population_from_checkpoint_preserves_state() {
+        let mut rng = seeded_rng();
+        let pop = Population::new(&mut rng);
+        let checkpoint = pop.to_checkpoint();
+
+        let restored = Population::from_checkpoint(&checkpoint, &mut rng);
+        assert_eq!(restored.generation, pop.generation);
+        assert_eq!(restored.individuals.len(), POPULATION_SIZE);
+        for (orig, rest) in pop.individuals.iter().zip(&restored.individuals) {
+            assert_eq!(orig.genome.weights, rest.genome.weights);
+        }
     }
 }

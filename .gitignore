@@ -2,3 +2,5 @@ logs/
 .env
 *.log
 /target/
+evolution_checkpoint.json
+evolution_checkpoint.json.tmp

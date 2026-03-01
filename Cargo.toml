@@ -8,3 +8,5 @@ description = "Evolving AI combatants for a 1v1 spaceship duel game"
 macroquad = "0.4"
 rand = "0.8"
 rayon = "1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

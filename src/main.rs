@@ -5,7 +5,7 @@ mod physics;
 mod render;
 
 use ai::Genome;
-use evolution::{GenerationStats, Population};
+use evolution::{Checkpoint, GenerationStats, Population, CHECKPOINT_INTERVAL, CHECKPOINT_PATH};
 use game::{Match, ShipActions, DEFAULT_MAX_TICKS, TICK_DT};
 use macroquad::prelude::*;
 use ::rand::Rng;
@@ -28,6 +28,8 @@ struct EvolutionUpdate {
     stats: GenerationStats,
     /// Top genomes from the completed generation (elites after evolution)
     top_genomes: Vec<Genome>,
+    /// Best fitness history from checkpoint (sent once on first update after resume)
+    restored_history: Option<Vec<f32>>,
 }
 
 #[macroquad::main(window_conf)]
@@ -40,11 +42,39 @@ async fn main() {
     // Spawn evolution in background thread so UI stays responsive
     std::thread::spawn(move || {
         let mut evo_rng = StdRng::from_entropy();
-        let mut population = Population::new(&mut evo_rng);
+
+        // Try to resume from checkpoint
+        let (mut population, restored_history) =
+            if let Some(checkpoint) = Checkpoint::load(CHECKPOINT_PATH) {
+                println!(
+                    "Loaded checkpoint: generation {}, {} genomes, {} fitness history entries",
+                    checkpoint.generation,
+                    checkpoint.genomes.len(),
+                    checkpoint.best_fitness_history.len(),
+                );
+                let history = checkpoint.best_fitness_history.clone();
+                (
+                    Population::from_checkpoint(&checkpoint, &mut evo_rng),
+                    Some(history),
+                )
+            } else {
+                println!("No checkpoint found, starting fresh");
+                (Population::new(&mut evo_rng), None)
+            };
+
+        let mut first_update = true;
 
         loop {
             let stats = population.run_generation(&mut evo_rng);
             println!("{}", stats);
+
+            // Auto-save checkpoint periodically
+            if population.generation % CHECKPOINT_INTERVAL == 0 {
+                let checkpoint = population.to_checkpoint();
+                if let Err(e) = checkpoint.save(CHECKPOINT_PATH) {
+                    eprintln!("Failed to save checkpoint: {e}");
+                }
+            }
 
             // After run_generation, individuals[0..elite_count] are the elites
             let top_n = 10.min(population.individuals.len());
@@ -53,8 +83,29 @@ async fn main() {
                 .map(|ind| ind.genome.clone())
                 .collect();
 
-            if tx.send(EvolutionUpdate { stats, top_genomes }).is_err() {
-                return; // Main thread exited
+            let update = EvolutionUpdate {
+                stats,
+                top_genomes,
+                restored_history: if first_update {
+                    restored_history.clone()
+                } else {
+                    None
+                },
+            };
+            first_update = false;
+
+            if tx.send(update).is_err() {
+                // Main thread exited — save final checkpoint before stopping
+                let checkpoint = population.to_checkpoint();
+                if let Err(e) = checkpoint.save(CHECKPOINT_PATH) {
+                    eprintln!("Failed to save final checkpoint: {e}");
+                } else {
+                    println!(
+                        "Saved final checkpoint at generation {}",
+                        population.generation
+                    );
+                }
+                return;
             }
         }
     });
@@ -80,6 +131,20 @@ async fn main() {
 
         // Poll for evolution updates (non-blocking)
         while let Ok(update) = rx.try_recv() {
+            // On first update after checkpoint restore, prepend historical stats
+            if let Some(history) = update.restored_history {
+                for (i, best_fitness) in history.iter().enumerate() {
+                    stats_history.push(GenerationStats {
+                        generation: i as u32,
+                        best_fitness: *best_fitness,
+                        avg_fitness: 0.0,
+                        worst_fitness: 0.0,
+                        total_wins: 0,
+                        total_matches: 0,
+                        avg_diversity: 0.0,
+                    });
+                }
+            }
             stats_history.push(update.stats);
             top_genomes = update.top_genomes;
         }
