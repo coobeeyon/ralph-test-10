@@ -144,6 +144,7 @@ async fn main() {
                         total_wins: 0,
                         total_matches: 0,
                         avg_diversity: 0.0,
+                        num_species: 0,
                         mutation_rate: evolution::adaptive_mutation_rate(i as u32),
                         mutation_strength: evolution::adaptive_mutation_strength(i as u32),
                     });
@@ -251,15 +252,19 @@ async fn main() {
                         50.0, 200.0, 20.0, ORANGE,
                     );
                     draw_text(
+                        &format!("Species:      {}", stats.num_species),
+                        50.0, 230.0, 20.0, LIME,
+                    );
+                    draw_text(
                         &format!(
                             "Mutation:     {:.1}% rate, {:.2} strength",
                             stats.mutation_rate * 100.0, stats.mutation_strength
                         ),
-                        50.0, 230.0, 20.0, MAGENTA,
+                        50.0, 260.0, 20.0, MAGENTA,
                     );
                     draw_text(
                         &format!("Wins: {} / {} matches", stats.total_wins, stats.total_matches),
-                        50.0, 260.0, 20.0, YELLOW,
+                        50.0, 290.0, 20.0, YELLOW,
                     );
                 } else {
                     draw_text("Evolving generation 1...", 50.0, 80.0, 20.0, YELLOW);
@@ -324,9 +329,9 @@ fn draw_fitness_graph(history: &[GenerationStats], screen_w: f32, screen_h: f32)
     }
 
     let graph_x = 50.0;
-    let graph_y = 270.0;
+    let graph_y = 300.0;
     let graph_w = screen_w - 100.0;
-    let graph_h = screen_h - 310.0;
+    let graph_h = screen_h - 340.0;
 
     // Draw axes
     draw_line(graph_x, graph_y, graph_x, graph_y + graph_h, 1.0, DARKGRAY);

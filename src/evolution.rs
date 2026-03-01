@@ -35,8 +35,15 @@ pub const ELITE_FRACTION: f32 = 0.1;
 /// Tournament selection size
 pub const TOURNAMENT_SIZE: usize = 5;
 
-/// Fitness sharing radius: genomes within this Euclidean distance share fitness
-pub const SHARING_RADIUS: f32 = 8.0;
+/// Distance threshold for speciation: genomes farther than this from a species
+/// representative are placed in a different species
+pub const SPECIES_THRESHOLD: f32 = 15.0;
+
+/// Number of generations a new species is protected from elimination
+pub const SPECIES_GRACE_PERIOD: u32 = 5;
+
+/// Minimum number of offspring allocated to any species (ensures small species survive)
+pub const SPECIES_MIN_OFFSPRING: usize = 2;
 
 /// How often to auto-save checkpoints (every N generations)
 pub const CHECKPOINT_INTERVAL: u32 = 5;
@@ -73,6 +80,33 @@ impl Checkpoint {
     }
 }
 
+/// A species groups similar genomes together for protected evolution.
+#[derive(Clone, Debug)]
+pub struct Species {
+    /// Unique identifier for this species
+    pub id: u32,
+    /// Index of the representative individual (used for distance comparison)
+    pub representative_genome: Genome,
+    /// Indices of members in the population
+    pub members: Vec<usize>,
+    /// How many generations this species has existed
+    pub age: u32,
+    /// Best fitness ever achieved by any member of this species
+    pub best_fitness_ever: f32,
+}
+
+impl Species {
+    pub fn new(id: u32, representative: Genome) -> Self {
+        Self {
+            id,
+            representative_genome: representative,
+            members: Vec::new(),
+            age: 0,
+            best_fitness_ever: 0.0,
+        }
+    }
+}
+
 /// Compute the adaptive mutation rate for a given generation.
 ///
 /// Decays exponentially from MUTATION_RATE_INITIAL to MUTATION_RATE_FINAL.
@@ -102,6 +136,8 @@ pub struct GenerationStats {
     pub total_matches: u32,
     /// Average pairwise genome distance (diversity metric)
     pub avg_diversity: f32,
+    /// Number of active species
+    pub num_species: usize,
     /// Mutation rate used for this generation
     pub mutation_rate: f32,
     /// Mutation strength used for this generation
@@ -112,12 +148,13 @@ impl fmt::Display for GenerationStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Div: {:>5.2} | Mut: {:.1}%/{:.2} | Wins: {}/{}",
+            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Div: {:>5.2} | Sp: {:>2} | Mut: {:.1}%/{:.2} | Wins: {}/{}",
             self.generation,
             self.best_fitness,
             self.avg_fitness,
             self.worst_fitness,
             self.avg_diversity,
+            self.num_species,
             self.mutation_rate * 100.0,
             self.mutation_strength,
             self.total_wins,
@@ -151,6 +188,10 @@ pub struct Population {
     pub individuals: Vec<Individual>,
     pub generation: u32,
     pub best_fitness_history: Vec<f32>,
+    /// Active species for the current generation
+    pub species: Vec<Species>,
+    /// Counter for assigning unique species IDs
+    next_species_id: u32,
 }
 
 impl Population {
@@ -164,6 +205,8 @@ impl Population {
             individuals,
             generation: 0,
             best_fitness_history: Vec::new(),
+            species: Vec::new(),
+            next_species_id: 0,
         }
     }
 
@@ -186,6 +229,8 @@ impl Population {
             individuals,
             generation: checkpoint.generation,
             best_fitness_history: checkpoint.best_fitness_history.clone(),
+            species: Vec::new(),
+            next_species_id: 0,
         }
     }
 
@@ -216,6 +261,7 @@ impl Population {
             total_wins,
             total_matches,
             avg_diversity,
+            num_species: self.species.len(),
             mutation_rate: adaptive_mutation_rate(self.generation),
             mutation_strength: adaptive_mutation_strength(self.generation),
         }
@@ -248,7 +294,68 @@ impl Population {
         stats
     }
 
-    /// Perform tournament selection
+    /// Assign each individual to a species based on genome distance to species
+    /// representatives. Individuals that don't fit any existing species create new ones.
+    pub fn assign_species(&mut self, rng: &mut impl Rng) {
+        // Clear member lists but keep species (with their representatives and age)
+        for sp in &mut self.species {
+            sp.members.clear();
+        }
+
+        // Assign each individual to the nearest compatible species
+        for i in 0..self.individuals.len() {
+            let genome = &self.individuals[i].genome;
+            let mut assigned = false;
+
+            // Find the first species whose representative is close enough
+            for sp in &mut self.species {
+                let dist = genome.distance(&sp.representative_genome);
+                if dist < SPECIES_THRESHOLD {
+                    sp.members.push(i);
+                    assigned = true;
+                    break;
+                }
+            }
+
+            // If no compatible species, create a new one
+            if !assigned {
+                let id = self.next_species_id;
+                self.next_species_id += 1;
+                let mut new_species = Species::new(id, genome.clone());
+                new_species.members.push(i);
+                self.species.push(new_species);
+            }
+        }
+
+        // Remove empty species (ones that lost all members)
+        self.species.retain(|sp| !sp.members.is_empty());
+
+        // Update representatives: pick a random member from each species
+        for sp in &mut self.species {
+            let idx = sp.members[rng.gen_range(0..sp.members.len())];
+            sp.representative_genome = self.individuals[idx].genome.clone();
+        }
+
+        // Age all species
+        for sp in &mut self.species {
+            sp.age += 1;
+        }
+    }
+
+    /// Perform tournament selection from within a specific set of individual indices.
+    pub fn tournament_select_from(&self, members: &[usize], rng: &mut impl Rng) -> &Genome {
+        let mut best_idx = members[rng.gen_range(0..members.len())];
+        let rounds = TOURNAMENT_SIZE.min(members.len());
+        for _ in 1..rounds {
+            let idx = members[rng.gen_range(0..members.len())];
+            if self.individuals[idx].fitness > self.individuals[best_idx].fitness {
+                best_idx = idx;
+            }
+        }
+        &self.individuals[best_idx].genome
+    }
+
+    /// Perform tournament selection across the entire population (fallback).
     pub fn tournament_select(&self, rng: &mut impl Rng) -> &Genome {
         let mut best_idx = rng.gen_range(0..self.individuals.len());
         for _ in 1..TOURNAMENT_SIZE {
@@ -284,17 +391,20 @@ impl Population {
         }
     }
 
-    /// Create the next generation using elitism, tournament selection, crossover, and mutation.
+    /// Create the next generation using speciation-based selection.
+    ///
+    /// Each species receives offspring proportional to its total adjusted fitness.
+    /// Tournament selection happens within species. New species are protected
+    /// by a grace period that guarantees them minimum representation.
     ///
     /// Mutation rate and strength are computed adaptively based on the current
     /// generation number: they start high for broad exploration and decay
     /// exponentially toward lower values for fine-tuning.
     pub fn next_generation(&mut self, rng: &mut impl Rng) {
-        // Sort by fitness (descending)
+        // Sort by fitness (descending) for elitism
         self.individuals
             .sort_by(|a, b| b.fitness.partial_cmp(&a.fitness).unwrap());
 
-        let elite_count = (POPULATION_SIZE as f32 * ELITE_FRACTION) as usize;
         let best_fitness = self.individuals[0].fitness;
         self.best_fitness_history.push(best_fitness);
 
@@ -302,14 +412,142 @@ impl Population {
         let rate = adaptive_mutation_rate(self.generation);
         let strength = adaptive_mutation_strength(self.generation);
 
+        // Update best fitness ever for each species
+        for sp in &mut self.species {
+            let sp_best = sp
+                .members
+                .iter()
+                .map(|&i| self.individuals[i].fitness)
+                .fold(f32::NEG_INFINITY, f32::max);
+            if sp_best > sp.best_fitness_ever {
+                sp.best_fitness_ever = sp_best;
+            }
+        }
+
+        // Calculate offspring allocation per species based on total adjusted fitness.
+        // Species in their grace period get at least SPECIES_MIN_OFFSPRING.
+        let total_adjusted: f32 = self
+            .species
+            .iter()
+            .map(|sp| {
+                sp.members
+                    .iter()
+                    .map(|&i| self.individuals[i].fitness.max(0.0))
+                    .sum::<f32>()
+            })
+            .sum();
+
+        let elite_count = (POPULATION_SIZE as f32 * ELITE_FRACTION) as usize;
+        let remaining_slots = POPULATION_SIZE - elite_count;
+
+        let mut offspring_counts: Vec<usize> = Vec::with_capacity(self.species.len());
+        if total_adjusted > 0.0 {
+            for sp in &self.species {
+                let sp_fitness: f32 = sp
+                    .members
+                    .iter()
+                    .map(|&i| self.individuals[i].fitness.max(0.0))
+                    .sum();
+                let proportion = sp_fitness / total_adjusted;
+                let allocated = (proportion * remaining_slots as f32).round() as usize;
+
+                // Grace period: new species get at least minimum offspring
+                if sp.age <= SPECIES_GRACE_PERIOD {
+                    offspring_counts.push(allocated.max(SPECIES_MIN_OFFSPRING));
+                } else {
+                    offspring_counts.push(allocated);
+                }
+            }
+        } else {
+            // Equal distribution if all fitness is zero
+            let per_species = remaining_slots / self.species.len().max(1);
+            for _ in &self.species {
+                offspring_counts.push(per_species.max(1));
+            }
+        }
+
+        // Normalize offspring counts to fit remaining_slots exactly
+        let total_allocated: usize = offspring_counts.iter().sum();
+        if total_allocated > remaining_slots && !offspring_counts.is_empty() {
+            // Scale down proportionally, preserving grace period minimums
+            let scale = remaining_slots as f32 / total_allocated as f32;
+            let mut scaled: Vec<usize> = offspring_counts
+                .iter()
+                .enumerate()
+                .map(|(si, &count)| {
+                    let min = if self.species[si].age <= SPECIES_GRACE_PERIOD {
+                        SPECIES_MIN_OFFSPRING
+                    } else {
+                        0
+                    };
+                    (count as f32 * scale).round().max(min as f32) as usize
+                })
+                .collect();
+            // Trim excess from largest species
+            while scaled.iter().sum::<usize>() > remaining_slots {
+                if let Some(max_idx) = scaled
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, &c)| c)
+                    .map(|(i, _)| i)
+                {
+                    if scaled[max_idx] > 1 {
+                        scaled[max_idx] -= 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            offspring_counts = scaled;
+        } else if total_allocated < remaining_slots && !offspring_counts.is_empty() {
+            // Give extra slots to the best species
+            let deficit = remaining_slots - total_allocated;
+            // Find species with highest best fitness
+            let best_sp = self
+                .species
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| {
+                    let fa: f32 = a
+                        .members
+                        .iter()
+                        .map(|&i| self.individuals[i].fitness)
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    let fb: f32 = b
+                        .members
+                        .iter()
+                        .map(|&i| self.individuals[i].fitness)
+                        .fold(f32::NEG_INFINITY, f32::max);
+                    fa.partial_cmp(&fb).unwrap()
+                })
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            offspring_counts[best_sp] += deficit;
+        }
+
         let mut next_gen: Vec<Individual> = Vec::with_capacity(POPULATION_SIZE);
 
-        // Keep elites
-        for i in 0..elite_count {
+        // Keep global elites (top individuals regardless of species)
+        for i in 0..elite_count.min(self.individuals.len()) {
             next_gen.push(Individual::new(self.individuals[i].genome.clone()));
         }
 
-        // Fill rest with offspring from tournament selection + crossover + mutation
+        // Produce offspring within each species
+        for (si, sp) in self.species.iter().enumerate() {
+            let count = offspring_counts.get(si).copied().unwrap_or(0);
+            for _ in 0..count {
+                if next_gen.len() >= POPULATION_SIZE {
+                    break;
+                }
+                let parent_a = self.tournament_select_from(&sp.members, rng).clone();
+                let parent_b = self.tournament_select_from(&sp.members, rng).clone();
+                let mut child = Population::crossover(&parent_a, &parent_b, rng);
+                Population::mutate(&mut child, rate, strength, rng);
+                next_gen.push(Individual::new(child));
+            }
+        }
+
+        // Fill any remaining slots (edge case: rounding errors)
         while next_gen.len() < POPULATION_SIZE {
             let parent_a = self.tournament_select(rng).clone();
             let parent_b = self.tournament_select(rng).clone();
@@ -317,6 +555,9 @@ impl Population {
             Population::mutate(&mut child, rate, strength, rng);
             next_gen.push(Individual::new(child));
         }
+
+        // Truncate if we somehow exceeded
+        next_gen.truncate(POPULATION_SIZE);
 
         self.individuals = next_gen;
         self.generation += 1;
@@ -326,6 +567,8 @@ impl Population {
     ///
     /// Each individual plays MATCHES_PER_INDIVIDUAL matches against randomly
     /// selected opponents. Matches are run in parallel using rayon for speed.
+    /// After computing raw fitness, individuals are assigned to species and
+    /// fitness is adjusted by dividing by species size (replaces pairwise sharing).
     pub fn evaluate_generation(&mut self, rng: &mut impl Rng) {
         // Reset fitness for all individuals
         for ind in self.individuals.iter_mut() {
@@ -384,25 +627,17 @@ impl Population {
             }
         }
 
-        // Apply fitness sharing to preserve diversity.
-        // Each individual's fitness is divided by its niche count: the sum of
-        // sharing function values across the population. Genomes in crowded
-        // regions of genome space get reduced fitness, encouraging diversity.
-        let n = self.individuals.len();
-        let mut niche_counts = vec![0.0f32; n];
-        for i in 0..n {
-            niche_counts[i] = 1.0; // self-sharing (distance 0 → sh = 1.0)
-            for j in (i + 1)..n {
-                let d = self.individuals[i].genome.distance(&self.individuals[j].genome);
-                if d < SHARING_RADIUS {
-                    let sh = 1.0 - d / SHARING_RADIUS;
-                    niche_counts[i] += sh;
-                    niche_counts[j] += sh;
-                }
+        // Assign individuals to species (NEAT-style speciation)
+        self.assign_species(rng);
+
+        // Apply species-based fitness adjustment: divide each individual's fitness
+        // by the size of its species. This replaces pairwise fitness sharing and
+        // prevents any single species from dominating the population.
+        for sp in &self.species {
+            let species_size = sp.members.len() as f32;
+            for &idx in &sp.members {
+                self.individuals[idx].fitness /= species_size;
             }
-        }
-        for i in 0..n {
-            self.individuals[i].fitness /= niche_counts[i];
         }
     }
 }
@@ -1024,14 +1259,36 @@ mod tests {
         assert!(total_wins > 0, "Some matches should have winners");
     }
 
-    // --- Fitness sharing ---
+    // --- Speciation ---
 
     #[test]
-    fn fitness_sharing_reduces_fitness_of_clones() {
+    fn speciation_creates_species() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+        pop.evaluate_generation(&mut rng);
+
+        // After evaluation, species should be assigned
+        assert!(!pop.species.is_empty(), "Should have at least one species");
+
+        // All individuals should be in exactly one species
+        let mut assigned = vec![false; pop.individuals.len()];
+        for sp in &pop.species {
+            for &idx in &sp.members {
+                assert!(!assigned[idx], "Individual {} in multiple species", idx);
+                assigned[idx] = true;
+            }
+        }
+        for (i, &a) in assigned.iter().enumerate() {
+            assert!(a, "Individual {} not assigned to any species", i);
+        }
+    }
+
+    #[test]
+    fn speciation_clones_form_single_species() {
         let mut rng = seeded_rng();
         let mut pop = Population::new(&mut rng);
 
-        // Make all individuals identical (clone the first genome)
+        // Make all individuals identical
         let clone = pop.individuals[0].genome.clone();
         for ind in pop.individuals.iter_mut() {
             ind.genome = clone.clone();
@@ -1039,13 +1296,34 @@ mod tests {
 
         pop.evaluate_generation(&mut rng);
 
-        // With all-identical genomes, every individual's niche count = POPULATION_SIZE
-        // (since distance=0, sh=1.0 for all pairs), so fitness is divided by N.
-        // Just verify that fitness is substantially reduced compared to a diverse population.
+        // All-identical genomes should be in one species
+        assert_eq!(
+            pop.species.len(),
+            1,
+            "Identical genomes should form exactly 1 species, got {}",
+            pop.species.len()
+        );
+        assert_eq!(pop.species[0].members.len(), POPULATION_SIZE);
+    }
+
+    #[test]
+    fn speciation_adjusts_fitness_by_species_size() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        // Make all individuals identical (single large species)
+        let clone = pop.individuals[0].genome.clone();
+        for ind in pop.individuals.iter_mut() {
+            ind.genome = clone.clone();
+        }
+
+        pop.evaluate_generation(&mut rng);
+
+        // With all in one species of size N, fitness should be divided by N
+        // So clone fitness should be much lower than a diverse population
         let clone_avg = pop.individuals.iter().map(|i| i.fitness).sum::<f32>()
             / pop.individuals.len() as f32;
 
-        // A diverse population should have higher avg fitness (less sharing penalty)
         let mut diverse_pop = Population::new(&mut rng);
         diverse_pop.evaluate_generation(&mut rng);
         let diverse_avg = diverse_pop.individuals.iter().map(|i| i.fitness).sum::<f32>()
@@ -1060,43 +1338,14 @@ mod tests {
     }
 
     #[test]
-    fn fitness_sharing_niche_count_minimum_is_one() {
-        // Even a completely unique individual should have niche_count >= 1.0
-        // (self-contribution), so fitness should never increase from sharing
+    fn speciation_species_have_age() {
         let mut rng = seeded_rng();
         let mut pop = Population::new(&mut rng);
+        pop.evaluate_generation(&mut rng);
 
-        // Evaluate to get raw fitness
-        // Reset and evaluate
-        for ind in pop.individuals.iter_mut() {
-            ind.fitness = 0.0;
-            ind.wins = 0;
-            ind.matches_played = 0;
-        }
-
-        // Set known fitness values (skip actual evaluation)
-        for ind in pop.individuals.iter_mut() {
-            ind.fitness = 10.0;
-            ind.matches_played = 1; // prevent divide-by-zero in normalization
-        }
-
-        // After sharing, fitness should be <= original for all individuals
-        // (since niche_count >= 1.0)
-        let n = pop.individuals.len();
-        let mut niche_counts = vec![0.0f32; n];
-        for i in 0..n {
-            niche_counts[i] = 1.0;
-            for j in (i + 1)..n {
-                let d = pop.individuals[i].genome.distance(&pop.individuals[j].genome);
-                if d < SHARING_RADIUS {
-                    let sh = 1.0 - d / SHARING_RADIUS;
-                    niche_counts[i] += sh;
-                    niche_counts[j] += sh;
-                }
-            }
-        }
-        for nc in &niche_counts {
-            assert!(*nc >= 1.0, "Niche count should be at least 1.0, got {}", nc);
+        // After first evaluation, all species should have age 1
+        for sp in &pop.species {
+            assert_eq!(sp.age, 1, "New species should have age 1 after first assign");
         }
     }
 
