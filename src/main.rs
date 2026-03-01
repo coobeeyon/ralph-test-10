@@ -71,6 +71,8 @@ async fn main() {
     let mut was_alive: [bool; 2] = [true, true];
     let mut explosions: Vec<render::Explosion> = Vec::new();
     let mut showcase_scores: [u32; 3] = [0, 0, 0]; // [green_wins, blue_wins, draws]
+    let speed_levels: [u32; 5] = [1, 2, 4, 8, 16];
+    let mut speed_index: usize = 0;
 
     loop {
         let sw = screen_width();
@@ -86,6 +88,19 @@ async fn main() {
         if is_key_pressed(KeyCode::Tab) {
             show_stats = !show_stats;
         }
+
+        // Speed controls: Up/Down arrows cycle through speed multipliers
+        if is_key_pressed(KeyCode::Up) {
+            if speed_index < speed_levels.len() - 1 {
+                speed_index += 1;
+            }
+        }
+        if is_key_pressed(KeyCode::Down) {
+            if speed_index > 0 {
+                speed_index -= 1;
+            }
+        }
+        let sim_speed = speed_levels[speed_index];
 
         // Start a new showcase match if needed
         if showcase_match.is_none() {
@@ -106,8 +121,11 @@ async fn main() {
 
         // Advance and render the showcase match
         if let Some(ref mut game) = showcase_match {
-            // Advance simulation
-            if game.is_running() {
+            // Advance simulation (multiple steps per frame at higher speeds)
+            for _ in 0..sim_speed {
+                if !game.is_running() {
+                    break;
+                }
                 current_actions = [
                     showcase_genomes[0].decide(game, 0),
                     showcase_genomes[1].decide(game, 1),
@@ -125,7 +143,9 @@ async fn main() {
                     }
                     was_alive[i] = game.ships[i].alive;
                 }
-            } else {
+            }
+
+            if !game.is_running() {
                 result_pause += 1;
             }
 
@@ -171,7 +191,7 @@ async fn main() {
 
                 draw_fitness_graph(&stats_history, sw, sh);
                 draw_text(
-                    "TAB: match view  SPACE: skip match",
+                    "TAB: match view  SPACE: skip match  UP/DOWN: speed",
                     10.0, sh - 10.0, 16.0, GRAY,
                 );
             } else {
@@ -183,7 +203,7 @@ async fn main() {
 
                 let gen = stats_history.last().map_or(0, |s| s.generation);
                 let best_fit = stats_history.last().map_or(0.0, |s| s.best_fitness);
-                render::draw_hud(gen, best_fit, game);
+                render::draw_hud(gen, best_fit, game, sim_speed);
                 render::draw_score_tracker(
                     showcase_scores[0], showcase_scores[1], showcase_scores[2],
                 );
@@ -195,7 +215,7 @@ async fn main() {
                     );
                 } else {
                     draw_text(
-                        "SPACE: skip  TAB: stats",
+                        "SPACE: skip  TAB: stats  UP/DOWN: speed",
                         10.0, sh - 10.0, 16.0, GRAY,
                     );
                 }

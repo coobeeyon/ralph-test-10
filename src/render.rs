@@ -373,7 +373,7 @@ pub fn draw_score_tracker(green_wins: u32, blue_wins: u32, draws: u32) {
 }
 
 /// Draw the HUD overlay with generation and match info
-pub fn draw_hud(generation: u32, best_fitness: f32, game: &Match) {
+pub fn draw_hud(generation: u32, best_fitness: f32, game: &Match, sim_speed: u32) {
     let sw = screen_width();
 
     // Top line: generation and fitness
@@ -387,8 +387,13 @@ pub fn draw_hud(generation: u32, best_fitness: f32, game: &Match) {
 
     // Match timer
     let seconds_left = (game.max_ticks.saturating_sub(game.tick)) as f32 / 60.0;
+    let timer_text = if sim_speed > 1 {
+        format!("Time: {:.1}s  [{}x]", seconds_left, sim_speed)
+    } else {
+        format!("Time: {:.1}s", seconds_left)
+    };
     draw_text(
-        &format!("Time: {:.1}s", seconds_left),
+        &timer_text,
         sw / 2.0 - 40.0,
         20.0,
         20.0,
