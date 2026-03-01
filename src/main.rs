@@ -157,8 +157,12 @@ async fn main() {
                         50.0, 170.0, 20.0, SKYBLUE,
                     );
                     draw_text(
+                        &format!("Diversity:    {:.2}", stats.avg_diversity),
+                        50.0, 200.0, 20.0, ORANGE,
+                    );
+                    draw_text(
                         &format!("Wins: {} / {} matches", stats.total_wins, stats.total_matches),
-                        50.0, 200.0, 20.0, YELLOW,
+                        50.0, 230.0, 20.0, YELLOW,
                     );
                 } else {
                     draw_text("Evolving generation 1...", 50.0, 80.0, 20.0, YELLOW);
@@ -210,9 +214,9 @@ fn draw_fitness_graph(history: &[GenerationStats], screen_w: f32, screen_h: f32)
     }
 
     let graph_x = 50.0;
-    let graph_y = 240.0;
+    let graph_y = 270.0;
     let graph_w = screen_w - 100.0;
-    let graph_h = screen_h - 280.0;
+    let graph_h = screen_h - 310.0;
 
     // Draw axes
     draw_line(graph_x, graph_y, graph_x, graph_y + graph_h, 1.0, DARKGRAY);

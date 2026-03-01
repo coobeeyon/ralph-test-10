@@ -37,6 +37,16 @@ impl Genome {
         Self { weights }
     }
 
+    /// Compute Euclidean distance to another genome
+    pub fn distance(&self, other: &Genome) -> f32 {
+        self.weights
+            .iter()
+            .zip(&other.weights)
+            .map(|(a, b)| (a - b) * (a - b))
+            .sum::<f32>()
+            .sqrt()
+    }
+
     /// Evaluate the neural network given inputs, returning ship actions
     pub fn evaluate(&self, inputs: &[f32; NUM_INPUTS]) -> ShipActions {
         let w = &self.weights;
@@ -407,5 +417,38 @@ mod tests {
         let expected = (NUM_INPUTS * NUM_HIDDEN) + NUM_HIDDEN + (NUM_HIDDEN * NUM_OUTPUTS) + NUM_OUTPUTS;
         assert_eq!(GENOME_SIZE, expected);
         assert_eq!(GENOME_SIZE, 275);
+    }
+
+    // --- Genome distance ---
+
+    #[test]
+    fn distance_to_self_is_zero() {
+        let mut rng = seeded_rng();
+        let g = Genome::random(&mut rng);
+        assert!(approx_eq(g.distance(&g), 0.0));
+    }
+
+    #[test]
+    fn distance_is_symmetric() {
+        let mut rng = seeded_rng();
+        let a = Genome::random(&mut rng);
+        let b = Genome::random(&mut rng);
+        assert!(approx_eq(a.distance(&b), b.distance(&a)));
+    }
+
+    #[test]
+    fn distance_known_value() {
+        let a = Genome { weights: vec![0.0; GENOME_SIZE] };
+        let b = Genome { weights: vec![1.0; GENOME_SIZE] };
+        // distance = sqrt(275 * 1^2) = sqrt(275)
+        let expected = (GENOME_SIZE as f32).sqrt();
+        assert!(approx_eq(a.distance(&b), expected));
+    }
+
+    #[test]
+    fn distance_identical_genomes_is_zero() {
+        let a = Genome { weights: vec![0.5; GENOME_SIZE] };
+        let b = Genome { weights: vec![0.5; GENOME_SIZE] };
+        assert!(approx_eq(a.distance(&b), 0.0));
     }
 }

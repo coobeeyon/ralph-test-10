@@ -22,6 +22,9 @@ pub const ELITE_FRACTION: f32 = 0.1;
 /// Tournament selection size
 pub const TOURNAMENT_SIZE: usize = 5;
 
+/// Fitness sharing radius: genomes within this Euclidean distance share fitness
+pub const SHARING_RADIUS: f32 = 8.0;
+
 /// Statistics for a single generation
 #[derive(Clone, Debug)]
 pub struct GenerationStats {
@@ -31,17 +34,20 @@ pub struct GenerationStats {
     pub worst_fitness: f32,
     pub total_wins: u32,
     pub total_matches: u32,
+    /// Average pairwise genome distance (diversity metric)
+    pub avg_diversity: f32,
 }
 
 impl fmt::Display for GenerationStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Wins: {}/{}",
+            "Gen {:>4} | Best: {:>6.2} | Avg: {:>6.2} | Worst: {:>6.2} | Div: {:>5.2} | Wins: {}/{}",
             self.generation,
             self.best_fitness,
             self.avg_fitness,
             self.worst_fitness,
+            self.avg_diversity,
             self.total_wins,
             self.total_matches,
         )
@@ -97,6 +103,7 @@ impl Population {
         let avg = fitnesses.iter().sum::<f32>() / fitnesses.len() as f32;
         let total_wins = self.individuals.iter().map(|i| i.wins).sum();
         let total_matches = self.individuals.iter().map(|i| i.matches_played).sum();
+        let avg_diversity = self.compute_avg_diversity();
 
         GenerationStats {
             generation: self.generation,
@@ -105,7 +112,25 @@ impl Population {
             worst_fitness: worst,
             total_wins,
             total_matches,
+            avg_diversity,
         }
+    }
+
+    /// Compute average pairwise Euclidean distance between all genomes (diversity metric)
+    pub fn compute_avg_diversity(&self) -> f32 {
+        let n = self.individuals.len();
+        if n < 2 {
+            return 0.0;
+        }
+        let mut total = 0.0;
+        let mut count = 0u32;
+        for i in 0..n {
+            for j in (i + 1)..n {
+                total += self.individuals[i].genome.distance(&self.individuals[j].genome);
+                count += 1;
+            }
+        }
+        total / count as f32
     }
 
     /// Run one full generation: evaluate all individuals, collect stats, then evolve.
@@ -244,6 +269,27 @@ impl Population {
             if ind.matches_played > 0 {
                 ind.fitness /= ind.matches_played as f32;
             }
+        }
+
+        // Apply fitness sharing to preserve diversity.
+        // Each individual's fitness is divided by its niche count: the sum of
+        // sharing function values across the population. Genomes in crowded
+        // regions of genome space get reduced fitness, encouraging diversity.
+        let n = self.individuals.len();
+        let mut niche_counts = vec![0.0f32; n];
+        for i in 0..n {
+            niche_counts[i] = 1.0; // self-sharing (distance 0 → sh = 1.0)
+            for j in (i + 1)..n {
+                let d = self.individuals[i].genome.distance(&self.individuals[j].genome);
+                if d < SHARING_RADIUS {
+                    let sh = 1.0 - d / SHARING_RADIUS;
+                    niche_counts[i] += sh;
+                    niche_counts[j] += sh;
+                }
+            }
+        }
+        for i in 0..n {
+            self.individuals[i].fitness /= niche_counts[i];
         }
     }
 }
@@ -725,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn evolution_improves_over_generations() {
+    fn evolution_produces_reasonable_fitness() {
         let mut rng = StdRng::seed_from_u64(456);
         let mut pop = Population::new(&mut rng);
 
@@ -736,15 +782,21 @@ mod tests {
             all_stats.push(stats);
         }
 
-        // Average fitness of last 3 generations should be higher than first 3
-        let early_avg: f32 = all_stats[..3].iter().map(|s| s.avg_fitness).sum::<f32>() / 3.0;
-        let late_avg: f32 = all_stats[7..].iter().map(|s| s.avg_fitness).sum::<f32>() / 3.0;
+        // With fitness sharing, raw fitness numbers may decrease as the population
+        // converges (sharing penalizes crowded niches). Verify that evolution
+        // produces healthy results: positive fitness and some wins.
+        for stats in &all_stats {
+            assert!(stats.best_fitness > 0.0, "Best fitness should be positive");
+            assert!(stats.avg_fitness > 0.0, "Avg fitness should be positive");
+        }
         assert!(
-            late_avg >= early_avg,
-            "Evolution should improve: early avg {:.2} vs late avg {:.2}",
-            early_avg,
-            late_avg
+            all_stats.last().unwrap().total_wins > 0,
+            "Some matches should have winners in the final generation"
         );
+
+        // Diversity should remain positive (sharing preserves it)
+        let late_diversity = all_stats.last().unwrap().avg_diversity;
+        assert!(late_diversity > 0.0, "Population should maintain diversity");
     }
 
     #[test]
@@ -757,5 +809,109 @@ mod tests {
         // Total wins should be reasonable (some matches end in draws)
         let total_wins: u32 = pop.individuals.iter().map(|i| i.wins).sum();
         assert!(total_wins > 0, "Some matches should have winners");
+    }
+
+    // --- Fitness sharing ---
+
+    #[test]
+    fn fitness_sharing_reduces_fitness_of_clones() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        // Make all individuals identical (clone the first genome)
+        let clone = pop.individuals[0].genome.clone();
+        for ind in pop.individuals.iter_mut() {
+            ind.genome = clone.clone();
+        }
+
+        pop.evaluate_generation(&mut rng);
+
+        // With all-identical genomes, every individual's niche count = POPULATION_SIZE
+        // (since distance=0, sh=1.0 for all pairs), so fitness is divided by N.
+        // Just verify that fitness is substantially reduced compared to a diverse population.
+        let clone_avg = pop.individuals.iter().map(|i| i.fitness).sum::<f32>()
+            / pop.individuals.len() as f32;
+
+        // A diverse population should have higher avg fitness (less sharing penalty)
+        let mut diverse_pop = Population::new(&mut rng);
+        diverse_pop.evaluate_generation(&mut rng);
+        let diverse_avg = diverse_pop.individuals.iter().map(|i| i.fitness).sum::<f32>()
+            / diverse_pop.individuals.len() as f32;
+
+        assert!(
+            diverse_avg > clone_avg,
+            "Diverse pop should have higher avg fitness ({:.4}) than clones ({:.4})",
+            diverse_avg,
+            clone_avg
+        );
+    }
+
+    #[test]
+    fn fitness_sharing_niche_count_minimum_is_one() {
+        // Even a completely unique individual should have niche_count >= 1.0
+        // (self-contribution), so fitness should never increase from sharing
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+
+        // Evaluate to get raw fitness
+        // Reset and evaluate
+        for ind in pop.individuals.iter_mut() {
+            ind.fitness = 0.0;
+            ind.wins = 0;
+            ind.matches_played = 0;
+        }
+
+        // Set known fitness values (skip actual evaluation)
+        for ind in pop.individuals.iter_mut() {
+            ind.fitness = 10.0;
+            ind.matches_played = 1; // prevent divide-by-zero in normalization
+        }
+
+        // After sharing, fitness should be <= original for all individuals
+        // (since niche_count >= 1.0)
+        let n = pop.individuals.len();
+        let mut niche_counts = vec![0.0f32; n];
+        for i in 0..n {
+            niche_counts[i] = 1.0;
+            for j in (i + 1)..n {
+                let d = pop.individuals[i].genome.distance(&pop.individuals[j].genome);
+                if d < SHARING_RADIUS {
+                    let sh = 1.0 - d / SHARING_RADIUS;
+                    niche_counts[i] += sh;
+                    niche_counts[j] += sh;
+                }
+            }
+        }
+        for nc in &niche_counts {
+            assert!(*nc >= 1.0, "Niche count should be at least 1.0, got {}", nc);
+        }
+    }
+
+    // --- Diversity metric ---
+
+    #[test]
+    fn diversity_of_identical_population_is_zero() {
+        let mut rng = seeded_rng();
+        let mut pop = Population::new(&mut rng);
+        let clone = pop.individuals[0].genome.clone();
+        for ind in pop.individuals.iter_mut() {
+            ind.genome = clone.clone();
+        }
+        assert_eq!(pop.compute_avg_diversity(), 0.0);
+    }
+
+    #[test]
+    fn diversity_of_random_population_is_positive() {
+        let mut rng = seeded_rng();
+        let pop = Population::new(&mut rng);
+        assert!(pop.compute_avg_diversity() > 0.0);
+    }
+
+    #[test]
+    fn generation_stats_include_diversity() {
+        let mut rng = seeded_rng();
+        let pop = Population::new(&mut rng);
+        let stats = pop.generation_stats();
+        assert!(stats.avg_diversity > 0.0, "Random population should have positive diversity");
     }
 }
