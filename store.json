@@ -175,11 +175,10 @@
       "title": "Add simulation speed controls for showcase matches",
       "description": "Add keyboard controls to speed up/slow down showcase match playback. Arrow keys Up/Down cycle through speed multipliers (1x, 2x, 4x, 8x). Multiple simulation steps per frame at higher speeds. Display current speed in HUD.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:32:14.314391355Z",
-      "updated_at": "2026-03-01T00:32:17.166670662Z"
+      "updated_at": "2026-03-01T00:36:29.765405891Z"
     },
     "lb-zww1": {
       "id": "lb-zww1",
