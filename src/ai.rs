@@ -9,8 +9,9 @@ const NORM_SCALE: f32 = 500.0;
 /// Number of input neurons for the neural network
 /// Inputs: relative enemy position (dx, dy), own velocity (vx, vy),
 /// own rotation (sin, cos), enemy velocity (evx, evy),
-/// bullets remaining (normalized), nearest enemy bullet distance & angle
-pub const NUM_INPUTS: usize = 11;
+/// enemy rotation (sin, cos), bullets remaining (normalized),
+/// nearest enemy bullet distance & angle
+pub const NUM_INPUTS: usize = 13;
 
 /// Number of output neurons: rotate, thrust, fire
 pub const NUM_OUTPUTS: usize = 3;
@@ -92,14 +93,15 @@ fn sigmoid(x: f32) -> f32 {
 
 /// Extract neural network inputs from the game state for a given ship.
 ///
-/// Returns 11 normalized inputs:
+/// Returns 13 normalized inputs:
 ///  0-1: toroidal displacement to enemy (dx, dy) / 500
 ///  2-3: own velocity (vx, vy) / 500
 ///  4-5: own heading as (sin, cos)
 ///  6-7: enemy velocity (evx, evy) / 500
-///    8: bullets remaining / max bullets (0..1)
-///    9: nearest enemy bullet distance / 500 (1.0 if none)
-///   10: angle from ship heading to nearest enemy bullet / PI (-1..1, 0 if none)
+///  8-9: enemy heading as (sin, cos)
+///   10: bullets remaining / max bullets (0..1)
+///   11: nearest enemy bullet distance / 500 (1.0 if none)
+///   12: angle from ship heading to nearest enemy bullet / PI (-1..1, 0 if none)
 pub fn extract_inputs(game: &Match, ship_idx: usize) -> [f32; NUM_INPUTS] {
     let enemy_idx = 1 - ship_idx;
     let ship = &game.ships[ship_idx];
@@ -132,6 +134,8 @@ pub fn extract_inputs(game: &Match, ship_idx: usize) -> [f32; NUM_INPUTS] {
         ship.rotation.cos(),
         enemy.vel.x / NORM_SCALE,
         enemy.vel.y / NORM_SCALE,
+        enemy.rotation.sin(),
+        enemy.rotation.cos(),
         ship.bullets_remaining as f32 / BULLETS_PER_ROUND as f32,
         nearest_dist / NORM_SCALE,
         nearest_angle / PI,
@@ -211,7 +215,7 @@ mod tests {
     fn evaluate_deterministic() {
         let mut rng = seeded_rng();
         let g = Genome::random(&mut rng);
-        let inputs = [0.5, -0.3, 0.1, 0.0, 0.7, 0.7, -0.1, 0.2, 0.5, 0.8, 0.1];
+        let inputs = [0.5, -0.3, 0.1, 0.0, 0.7, 0.7, -0.1, 0.2, 0.3, -0.9, 0.5, 0.8, 0.1];
         let a1 = g.evaluate(&inputs);
         let a2 = g.evaluate(&inputs);
 
@@ -270,12 +274,16 @@ mod tests {
         assert!(approx_eq(inputs[6], 0.0));
         assert!(approx_eq(inputs[7], 0.0));
 
+        // Enemy heading: ship1 rotation=PI, sin(PI)≈0, cos(PI)=-1
+        assert!(inputs[8].abs() < 0.01); // sin(PI) ≈ 0
+        assert!(approx_eq(inputs[9], -1.0)); // cos(PI) = -1
+
         // Full bullets
-        assert!(approx_eq(inputs[8], 1.0));
+        assert!(approx_eq(inputs[10], 1.0));
 
         // No enemy bullets: distance = 1.0, angle = 0.0
-        assert!(approx_eq(inputs[9], 1.0));
-        assert!(approx_eq(inputs[10], 0.0));
+        assert!(approx_eq(inputs[11], 1.0));
+        assert!(approx_eq(inputs[12], 0.0));
     }
 
     #[test]
@@ -311,8 +319,8 @@ mod tests {
         let inputs = extract_inputs(&m, 0);
 
         // nearest enemy bullet distance should be less than 1.0
-        assert!(inputs[9] < 1.0);
-        assert!(inputs[9] > 0.0);
+        assert!(inputs[11] < 1.0);
+        assert!(inputs[11] > 0.0);
     }
 
     #[test]
@@ -331,7 +339,7 @@ mod tests {
 
         let inputs = extract_inputs(&m, 0);
         let expected = (BULLETS_PER_ROUND as f32 - 4.0) / BULLETS_PER_ROUND as f32;
-        assert!(approx_eq(inputs[8], expected));
+        assert!(approx_eq(inputs[10], expected));
     }
 
     #[test]
@@ -398,6 +406,6 @@ mod tests {
     fn genome_size_correct() {
         let expected = (NUM_INPUTS * NUM_HIDDEN) + NUM_HIDDEN + (NUM_HIDDEN * NUM_OUTPUTS) + NUM_OUTPUTS;
         assert_eq!(GENOME_SIZE, expected);
-        assert_eq!(GENOME_SIZE, 243);
+        assert_eq!(GENOME_SIZE, 275);
     }
 }
