@@ -838,7 +838,7 @@ mod tests {
             .zip(&original)
             .filter(|(a, b)| a != b)
             .count();
-        // With 10% mutation rate on 275 weights, expect ~28 changes
+        // With 10% mutation rate on 387 weights, expect ~39 changes
         assert!(changed > 0, "Mutation should change some weights");
         assert!(
             changed < GENOME_SIZE,

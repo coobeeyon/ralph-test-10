@@ -17,13 +17,20 @@ pub const NUM_INPUTS: usize = 13;
 /// Number of output neurons: rotate, thrust, fire
 pub const NUM_OUTPUTS: usize = 3;
 
-/// Number of hidden neurons
-pub const NUM_HIDDEN: usize = 16;
+/// Number of neurons in the first hidden layer
+pub const NUM_HIDDEN1: usize = 16;
+
+/// Number of neurons in the second hidden layer
+pub const NUM_HIDDEN2: usize = 8;
 
 /// Total number of weights in the genome
-/// Input->Hidden + Hidden bias + Hidden->Output + Output bias
-pub const GENOME_SIZE: usize =
-    (NUM_INPUTS * NUM_HIDDEN) + NUM_HIDDEN + (NUM_HIDDEN * NUM_OUTPUTS) + NUM_OUTPUTS;
+/// Input->Hidden1 + Hidden1 bias + Hidden1->Hidden2 + Hidden2 bias + Hidden2->Output + Output bias
+pub const GENOME_SIZE: usize = (NUM_INPUTS * NUM_HIDDEN1)
+    + NUM_HIDDEN1
+    + (NUM_HIDDEN1 * NUM_HIDDEN2)
+    + NUM_HIDDEN2
+    + (NUM_HIDDEN2 * NUM_OUTPUTS)
+    + NUM_OUTPUTS;
 
 /// A genome encoding a ship's behavior as a simple feed-forward neural network
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,32 +60,52 @@ impl Genome {
         let w = &self.weights;
         let mut offset = 0;
 
-        // Input -> Hidden layer
-        let mut hidden = [0.0f32; NUM_HIDDEN];
-        for h in 0..NUM_HIDDEN {
+        // Input -> Hidden layer 1
+        let mut hidden1 = [0.0f32; NUM_HIDDEN1];
+        for h in 0..NUM_HIDDEN1 {
             let mut sum = 0.0;
             for i in 0..NUM_INPUTS {
                 sum += inputs[i] * w[offset];
                 offset += 1;
             }
-            hidden[h] = sum;
+            hidden1[h] = sum;
         }
-        // Hidden bias
-        for h in 0..NUM_HIDDEN {
-            hidden[h] += w[offset];
+        // Hidden1 bias
+        for h in 0..NUM_HIDDEN1 {
+            hidden1[h] += w[offset];
             offset += 1;
         }
         // Activation (tanh)
-        for h in 0..NUM_HIDDEN {
-            hidden[h] = hidden[h].tanh();
+        for h in 0..NUM_HIDDEN1 {
+            hidden1[h] = hidden1[h].tanh();
         }
 
-        // Hidden -> Output layer
+        // Hidden layer 1 -> Hidden layer 2
+        let mut hidden2 = [0.0f32; NUM_HIDDEN2];
+        for h2 in 0..NUM_HIDDEN2 {
+            let mut sum = 0.0;
+            for h1 in 0..NUM_HIDDEN1 {
+                sum += hidden1[h1] * w[offset];
+                offset += 1;
+            }
+            hidden2[h2] = sum;
+        }
+        // Hidden2 bias
+        for h2 in 0..NUM_HIDDEN2 {
+            hidden2[h2] += w[offset];
+            offset += 1;
+        }
+        // Activation (tanh)
+        for h2 in 0..NUM_HIDDEN2 {
+            hidden2[h2] = hidden2[h2].tanh();
+        }
+
+        // Hidden layer 2 -> Output layer
         let mut output = [0.0f32; NUM_OUTPUTS];
         for o in 0..NUM_OUTPUTS {
             let mut sum = 0.0;
-            for h in 0..NUM_HIDDEN {
-                sum += hidden[h] * w[offset];
+            for h2 in 0..NUM_HIDDEN2 {
+                sum += hidden2[h2] * w[offset];
                 offset += 1;
             }
             output[o] = sum;
@@ -415,9 +442,14 @@ mod tests {
 
     #[test]
     fn genome_size_correct() {
-        let expected = (NUM_INPUTS * NUM_HIDDEN) + NUM_HIDDEN + (NUM_HIDDEN * NUM_OUTPUTS) + NUM_OUTPUTS;
+        let expected = (NUM_INPUTS * NUM_HIDDEN1)
+            + NUM_HIDDEN1
+            + (NUM_HIDDEN1 * NUM_HIDDEN2)
+            + NUM_HIDDEN2
+            + (NUM_HIDDEN2 * NUM_OUTPUTS)
+            + NUM_OUTPUTS;
         assert_eq!(GENOME_SIZE, expected);
-        assert_eq!(GENOME_SIZE, 275);
+        assert_eq!(GENOME_SIZE, 387);
     }
 
     // --- Genome distance ---
@@ -441,7 +473,7 @@ mod tests {
     fn distance_known_value() {
         let a = Genome { weights: vec![0.0; GENOME_SIZE] };
         let b = Genome { weights: vec![1.0; GENOME_SIZE] };
-        // distance = sqrt(275 * 1^2) = sqrt(275)
+        // distance = sqrt(387 * 1^2) = sqrt(387)
         let expected = (GENOME_SIZE as f32).sqrt();
         assert!(approx_eq(a.distance(&b), expected));
     }
