@@ -110,6 +110,16 @@
       "created_at": "2026-02-28T23:59:52.316871977Z",
       "updated_at": "2026-02-28T23:59:52.316871977Z"
     },
+    "lb-pn5b": {
+      "id": "lb-pn5b",
+      "title": "Add more visual feedback during showcase matches",
+      "description": "Show aiming lines, score tracking, or hit indicators during visualization to help the user understand AI behavior as they watch matches.",
+      "item_type": "task",
+      "status": "open",
+      "priority": 3,
+      "created_at": "2026-03-01T00:00:14.352990330Z",
+      "updated_at": "2026-03-01T00:00:14.352990330Z"
+    },
     "lb-sllx": {
       "id": "lb-sllx",
       "title": "Visualization: Asteroids-style rendering with real-time match viewing",
@@ -294,6 +304,11 @@
     },
     {
       "from_id": "lb-ldz3",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
+      "from_id": "lb-pn5b",
       "to_id": "lb-olru",
       "dep_type": "parent"
     }
