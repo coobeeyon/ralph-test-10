@@ -85,11 +85,10 @@
       "title": "Add diversity preservation mechanism to evolution",
       "description": "Add fitness sharing or speciation to prevent premature convergence, encouraging diverse strategies in the population.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:00:13.626312568Z",
-      "updated_at": "2026-03-01T00:10:40.185999624Z"
+      "updated_at": "2026-03-01T00:22:21.643097766Z"
     },
     "lb-oha0": {
       "id": "lb-oha0",
