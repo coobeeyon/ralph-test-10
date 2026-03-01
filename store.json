@@ -105,11 +105,10 @@
       "title": "Add second hidden layer to neural network",
       "description": "Increase NN depth from 1 to 2 hidden layers (16→8 neurons) for more complex behavior patterns. Update genome encoding, crossover, and mutation to handle the larger network.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:48:06.918680199Z",
-      "updated_at": "2026-03-01T01:10:36.862938257Z"
+      "updated_at": "2026-03-01T01:22:51.901063828Z"
     },
     "lb-ldz3": {
       "id": "lb-ldz3",
