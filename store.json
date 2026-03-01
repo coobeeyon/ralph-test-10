@@ -125,11 +125,10 @@
       "title": "Add speciation to maintain population diversity",
       "description": "Implement NEAT-inspired speciation: group similar genomes into species, run tournaments within species, protect new species with a grace period.",
       "item_type": "task",
-      "status": "open",
+      "status": "closed",
       "priority": 2,
-      "claimed_by": "agent-runner",
       "created_at": "2026-03-01T00:48:07.806610267Z",
-      "updated_at": "2026-03-01T00:54:56.866187092Z"
+      "updated_at": "2026-03-01T01:08:57.638675114Z"
     },
     "lb-oha0": {
       "id": "lb-oha0",
