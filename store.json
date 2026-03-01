@@ -323,6 +323,11 @@
       "dep_type": "parent"
     },
     {
+      "from_id": "lb-xtqd",
+      "to_id": "lb-olru",
+      "dep_type": "parent"
+    },
+    {
       "from_id": "lb-yhfw",
       "to_id": "lb-olru",
       "dep_type": "parent"
@@ -336,11 +341,6 @@
       "from_id": "lb-zww1",
       "to_id": "lb-dmbs",
       "dep_type": "blocks"
-    },
-    {
-      "from_id": "lb-xtqd",
-      "to_id": "lb-olru",
-      "dep_type": "parent"
     }
   ]
 }
